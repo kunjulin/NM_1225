@@ -24,6 +24,10 @@ from app.schemas.case import (
     BulkApproveRequest,
     BulkApproveResponse,
     BulkApproveResult,
+    DoseCalculation,
+    BulkSubmitRequest,
+    BulkSubmitResult,
+    BulkSubmitResponse,
 )
 from app.schemas.snapshot import (
     CandidateFact,
@@ -37,6 +41,8 @@ from app.schemas.snapshot import (
     Confidence,
     ExtractionMethod,
     SnapshotData,
+    ManualFactRequest,
+    ManualFactResponse,
 )
 from app.schemas.rule_eval import RuleEval, RuleFlag, Severity
 from app.schemas.analytics import (
@@ -77,6 +83,10 @@ __all__ = [
     "BulkApproveRequest",
     "BulkApproveResponse",
     "BulkApproveResult",
+    "DoseCalculation",
+    "BulkSubmitRequest",
+    "BulkSubmitResult",
+    "BulkSubmitResponse",
     # Snapshot
     "CandidateFact",
     "PatientSnapshotResponse",
@@ -89,6 +99,8 @@ __all__ = [
     "Confidence",
     "ExtractionMethod",
     "SnapshotData",
+    "ManualFactRequest",
+    "ManualFactResponse",
     # Rule
     "RuleEval",
     "RuleFlag",

@@ -115,6 +115,21 @@ class RulesConfig:
             return exam.get("pediatric_factor")
         return None
     
+    def get_na2024_config(self, exam_code: str) -> Optional[dict]:
+        """取得 NA-2024 劑量配置
+        
+        Returns:
+            NA-2024 配置字典，包含:
+            - activity_per_kg: MBq/kg
+            - min_activity: 最小劑量 MBq
+            - max_activity: 最大劑量 MBq
+            - adult_standard: 成人標準劑量 MBq
+        """
+        exam = self.get_exam_config(exam_code)
+        if exam:
+            return exam.get("na2024")
+        return None
+    
     def get_batch_policy(self) -> dict:
         """取得批次核准政策"""
         return self.config.get("batch_policy", {})

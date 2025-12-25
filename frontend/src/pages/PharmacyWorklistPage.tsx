@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Table,
   TableBody,
@@ -21,14 +19,13 @@ import {
   Tooltip,
   Snackbar,
   Stack,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   Badge,
+  Tabs,
+  Tab,
+  Paper,
 } from '@mui/material'
 import {
   Refresh as RefreshIcon,
-  ExpandMore as ExpandMoreIcon,
   CheckCircle as ApproveIcon,
   Warning as WarningIcon,
   Error as ErrorIcon,
@@ -36,13 +33,14 @@ import {
 import { apiClient } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { WorklistResponse, WorklistItem, BulkApproveResponse } from '../types'
-import { severityColors, statusColors } from '../theme'
+import { severityColors } from '../theme'
 
 export function PharmacyWorklistPage() {
   const navigate = useNavigate()
-  const { getAuthHeaders, subject } = useAuth()
+  const { getAuthHeaders } = useAuth()
   const queryClient = useQueryClient()
   
+  const [tabValue, setTabValue] = useState(0)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
@@ -64,6 +62,8 @@ export function PharmacyWorklistPage() {
       }
     },
     refetchInterval: 30000,
+    refetchOnMount: 'always',
+    staleTime: 0,
   })
 
   const bulkApproveMutation = useMutation({
@@ -120,14 +120,9 @@ export function PharmacyWorklistPage() {
     bulkApproveMutation.mutate(Array.from(selectedIds))
   }
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    return date.toLocaleString('zh-TW', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue)
+    setSelectedIds(new Set()) // 切換 tab 時清除選取
   }
 
   if (isLoading) {
@@ -149,7 +144,34 @@ export function PharmacyWorklistPage() {
   const groups = data?.groups || []
   const batchEligibleGroup = groups.find(g => g.groupKey === 'batchEligible')
   const exceptionsGroup = groups.find(g => g.groupKey === 'exceptions')
-  const myClaimedGroup = groups.find(g => g.groupKey === 'myClaimed')
+  const approvedGroup = groups.find(g => g.groupKey === 'approved')
+
+  // Tab 數據：可批次核准、需逐筆審查、已批准
+  const tabData = [
+    {
+      label: '可批次核准',
+      count: batchEligibleGroup?.count || 0,
+      items: batchEligibleGroup?.items || [],
+      showCheckbox: true,
+      badgeColor: 'success' as const,
+    },
+    {
+      label: '需逐筆審查',
+      count: exceptionsGroup?.count || 0,
+      items: exceptionsGroup?.items || [],
+      showCheckbox: false,
+      badgeColor: 'error' as const,
+    },
+    {
+      label: '已批准',
+      count: approvedGroup?.count || 0,
+      items: approvedGroup?.items || [],
+      showCheckbox: false,
+      badgeColor: 'primary' as const,
+    },
+  ]
+
+  const currentTab = tabData[tabValue]
 
   return (
     <Box>
@@ -158,7 +180,7 @@ export function PharmacyWorklistPage() {
           藥師工作清單
         </Typography>
         <Stack direction="row" spacing={2}>
-          {selectedIds.size > 0 && (
+          {selectedIds.size > 0 && tabValue === 0 && (
             <Button
               variant="contained"
               color="success"
@@ -177,62 +199,42 @@ export function PharmacyWorklistPage() {
         </Stack>
       </Box>
 
-      {/* 可批次核准 */}
-      {batchEligibleGroup && (
-        <Accordion defaultExpanded>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Badge badgeContent={batchEligibleGroup.count} color="success">
-              <Typography fontWeight={600}>{batchEligibleGroup.title}</Typography>
-            </Badge>
-          </AccordionSummary>
-          <AccordionDetails sx={{ p: 0 }}>
-            <WorklistTable
-              items={batchEligibleGroup.items}
-              selectedIds={selectedIds}
-              onSelect={handleSelect}
-              onSelectAll={() => handleSelectAll(batchEligibleGroup.items)}
-              onRowClick={handleRowClick}
-              showCheckbox
-            />
-          </AccordionDetails>
-        </Accordion>
-      )}
+      {/* Tabs */}
+      <Tabs
+        value={tabValue}
+        onChange={handleTabChange}
+        sx={{ mb: 2 }}
+      >
+        {tabData.map((tab, index) => (
+          <Tab
+            key={index}
+            label={
+              <Badge badgeContent={tab.count} color={tab.badgeColor} max={99}>
+                <Typography sx={{ pr: tab.count > 0 ? 2 : 0 }}>{tab.label}</Typography>
+              </Badge>
+            }
+          />
+        ))}
+      </Tabs>
 
-      {/* 需逐筆審查 */}
-      {exceptionsGroup && (
-        <Accordion defaultExpanded>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Badge badgeContent={exceptionsGroup.count} color="error">
-              <Typography fontWeight={600}>{exceptionsGroup.title}</Typography>
-            </Badge>
-          </AccordionSummary>
-          <AccordionDetails sx={{ p: 0 }}>
-            <WorklistTable
-              items={exceptionsGroup.items}
-              selectedIds={new Set()}
-              onRowClick={handleRowClick}
-            />
-          </AccordionDetails>
-        </Accordion>
-      )}
-
-      {/* 我已 Claim */}
-      {myClaimedGroup && myClaimedGroup.count > 0 && (
-        <Accordion defaultExpanded>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Badge badgeContent={myClaimedGroup.count} color="primary">
-              <Typography fontWeight={600}>{myClaimedGroup.title}</Typography>
-            </Badge>
-          </AccordionSummary>
-          <AccordionDetails sx={{ p: 0 }}>
-            <WorklistTable
-              items={myClaimedGroup.items}
-              selectedIds={new Set()}
-              onRowClick={handleRowClick}
-            />
-          </AccordionDetails>
-        </Accordion>
-      )}
+      {/* 內容區 */}
+      <Paper variant="outlined">
+        {currentTab.items.length === 0 ? (
+          <Box p={4} textAlign="center">
+            <Typography color="text.secondary">目前沒有案件</Typography>
+          </Box>
+        ) : (
+          <WorklistTable
+            items={currentTab.items}
+            selectedIds={selectedIds}
+            onSelect={handleSelect}
+            onSelectAll={() => handleSelectAll(currentTab.items)}
+            onRowClick={handleRowClick}
+            showCheckbox={currentTab.showCheckbox}
+            showApprovedDate={tabValue === 2}
+          />
+        )}
+      </Paper>
 
       <Snackbar
         open={snackbar.open}
@@ -254,9 +256,18 @@ interface WorklistTableProps {
   onSelectAll?: () => void
   onRowClick: (id: string) => void
   showCheckbox?: boolean
+  showApprovedDate?: boolean
 }
 
-function WorklistTable({ items, selectedIds, onSelect, onSelectAll, onRowClick, showCheckbox }: WorklistTableProps) {
+function WorklistTable({ 
+  items, 
+  selectedIds, 
+  onSelect, 
+  onSelectAll, 
+  onRowClick, 
+  showCheckbox,
+  showApprovedDate = false,
+}: WorklistTableProps) {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
     return date.toLocaleString('zh-TW', {
@@ -265,14 +276,6 @@ function WorklistTable({ items, selectedIds, onSelect, onSelectAll, onRowClick, 
       hour: '2-digit',
       minute: '2-digit',
     })
-  }
-
-  if (items.length === 0) {
-    return (
-      <Box p={4} textAlign="center">
-        <Typography color="text.secondary">目前沒有案件</Typography>
-      </Box>
-    )
   }
 
   return (
@@ -293,7 +296,7 @@ function WorklistTable({ items, selectedIds, onSelect, onSelectAll, onRowClick, 
             <TableCell>檢查</TableCell>
             <TableCell>CDS</TableCell>
             <TableCell>Flags</TableCell>
-            <TableCell>更新時間</TableCell>
+            <TableCell>{showApprovedDate ? '批准時間' : '更新時間'}</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -340,9 +343,9 @@ function WorklistTable({ items, selectedIds, onSelect, onSelectAll, onRowClick, 
                       <Tooltip key={i} title={flag.title}>
                         {flag.severity === 'FAIL' ? (
                           <ErrorIcon color="error" sx={{ fontSize: 18 }} />
-                        ) : flag.severity === 'WARN' ? (
+                        ) : (
                           <WarningIcon color="warning" sx={{ fontSize: 18 }} />
-                        ) : null}
+                        )}
                       </Tooltip>
                     ))}
                     {item.ruleEval.flags.length > 3 && (
@@ -365,4 +368,3 @@ function WorklistTable({ items, selectedIds, onSelect, onSelectAll, onRowClick, 
     </TableContainer>
   )
 }
-

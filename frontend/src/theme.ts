@@ -6,7 +6,7 @@ export const theme = createTheme({
     mode: 'light',
     primary: {
       main: '#0D47A1', // 深藍色
-      light: '#5472D3',
+      light: '#c3d0f9',
       dark: '#002171',
       contrastText: '#FFFFFF',
     },
@@ -18,7 +18,8 @@ export const theme = createTheme({
     },
     error: {
       main: '#D32F2F',
-      light: '#EF5350',
+      //light: '#EF5350',
+      light: '#fdeded',
       dark: '#C62828',
     },
     warning: {

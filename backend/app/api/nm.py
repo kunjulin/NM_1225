@@ -15,6 +15,8 @@ from app.schemas import (
     SubmitResponse,
     RespondRequest,
     RespondResponse,
+    BulkSubmitRequest,
+    BulkSubmitResponse,
 )
 from app.services.case_service import CaseService
 from app.services.auth_service import get_current_user, CurrentUser
@@ -80,4 +82,34 @@ async def respond_to_return(
     """回應藥師退回"""
     service = CaseService(db)
     return await service.respond_to_return(case_id, request, current_user)
+
+
+@router.post("/bulk-submit", response_model=BulkSubmitResponse)
+async def bulk_submit(
+    request: BulkSubmitRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """批次送交藥師審查
+    
+    將多個 NM_DRAFTED 狀態且 CDS 非 FAIL 的案件批次送審。
+    CDS 為 FAIL 的案件將被排除，需個別處理。
+    
+    Args:
+        request: 包含要送審的案件 ID 列表
+        
+    Returns:
+        成功與失敗的案件列表
+    """
+    try:
+        service = CaseService(db)
+        return await service.bulk_submit(request.caseIds, request.note, current_user)
+    except Exception as e:
+        import logging
+        logging.error(f"Error in bulk_submit API: {e}", exc_info=True)
+        # 重新拋出為 HTTPException，讓 FastAPI 處理
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"批次送審時發生系統錯誤: {str(e)}"
+        )
 

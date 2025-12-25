@@ -12,6 +12,8 @@ from app.schemas import (
     AcceptAutoFillResponse,
     RejectAutoFillRequest,
     RejectAutoFillResponse,
+    ManualFactRequest,
+    ManualFactResponse,
 )
 from app.services.snapshot_service import SnapshotService
 from app.services.auth_service import get_current_user, CurrentUser
@@ -56,4 +58,19 @@ async def reject_autofill(
     """拒絕自動填入候選值（記錄稽核）"""
     service = SnapshotService(db)
     return await service.reject_autofill(case_id, request, current_user)
+
+
+@router.post("/{case_id}/manual-fact", response_model=ManualFactResponse)
+async def save_manual_fact(
+    case_id: str,
+    request: ManualFactRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """手動輸入臨床資料
+    
+    允許醫師手動輸入缺少的臨床資料（如體重、eGFR）
+    """
+    service = SnapshotService(db)
+    return await service.save_manual_fact(case_id, request, current_user)
 

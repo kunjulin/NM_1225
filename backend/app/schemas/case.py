@@ -184,3 +184,40 @@ class BulkApproveResponse(BaseModel):
     ok: list[BulkApproveResult]
     failed: list[BulkApproveResult]
 
+
+# === Dose Calculation 相關 (NA-2024) ===
+
+class DoseCalculation(BaseModel):
+    """NA-2024 劑量計算結果
+    
+    用於顯示根據 2024 北美兒童放射藥物劑量共識指引計算的建議劑量
+    """
+    suggestedDose: float          # 建議劑量 (MBq)
+    minDose: float               # 最小劑量 (MBq)
+    maxDose: float               # 最大劑量 (MBq)
+    formula: str                 # 計算公式說明
+    reference: str = "NA-2024"   # 參考標準
+    weightUsed: Optional[float] = None  # 使用的體重 (kg)
+    isPediatric: bool = False    # 是否為兒童劑量計算
+
+
+# === Bulk Submit 相關 (NM 批次送審) ===
+
+class BulkSubmitRequest(BaseModel):
+    """批次送審請求"""
+    caseIds: list[str]
+    note: Optional[str] = None
+
+
+class BulkSubmitResult(BaseModel):
+    """單一案件批次送審結果"""
+    caseId: str
+    status: Optional[CaseStatus] = None
+    code: Optional[str] = None
+    message: Optional[str] = None
+
+
+class BulkSubmitResponse(BaseModel):
+    """批次送審回應"""
+    ok: list[BulkSubmitResult]
+    failed: list[BulkSubmitResult]

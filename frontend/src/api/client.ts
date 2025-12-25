@@ -68,10 +68,12 @@ export class ApiClient {
 
     if (!response.ok) {
       let errorData: ApiError
+      // 先讀取 text，再嘗試解析為 JSON
+      const text = await response.text()
       try {
-        errorData = await response.json()
+        const jsonData = JSON.parse(text)
+        errorData = jsonData
       } catch {
-        const text = await response.text()
         errorData = {
           error: {
             code: 'UNKNOWN_ERROR',
@@ -80,7 +82,7 @@ export class ApiClient {
         }
       }
       console.error('[API] Error:', errorData)
-      throw new Error(errorData.error.message || 'Request failed')
+      throw new Error(errorData.error?.message || errorData.detail || 'Request failed')
     }
 
     const data = await response.json()

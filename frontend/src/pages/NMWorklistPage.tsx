@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Box,
   Card,
@@ -20,6 +20,13 @@ import {
   Badge,
   IconButton,
   Tooltip,
+  Button,
+  Stack,
+  Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material'
 import {
   Refresh as RefreshIcon,
@@ -27,10 +34,11 @@ import {
   Error as ErrorIcon,
   CheckCircle as PassIcon,
   Info as InfoIcon,
+  Send as SendIcon,
 } from '@mui/icons-material'
 import { apiClient } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
-import { WorklistResponse, WorklistItem, Severity } from '../types'
+import { WorklistResponse, WorklistItem, Severity, BulkSubmitResponse } from '../types'
 import { severityColors, statusColors } from '../theme'
 
 const severityIcons: Record<Severity, React.ReactNode> = {
@@ -49,8 +57,16 @@ const statusLabels: Record<string, string> = {
 
 export function NMWorklistPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { getAuthHeaders } = useAuth()
-  const [tabValue, setTabValue] = React.useState(0)
+  const [tabValue, setTabValue] = useState(0)
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
+    open: false,
+    message: '',
+    severity: 'success',
+  })
+  const [bulkSubmitDialogOpen, setBulkSubmitDialogOpen] = useState(false)
+  const [bulkSubmitResult, setBulkSubmitResult] = useState<BulkSubmitResponse | null>(null)
 
   const { data, isLoading, error, refetch } = useQuery<WorklistResponse>({
     queryKey: ['nm-worklist'],
@@ -66,10 +82,51 @@ export function NMWorklistPage() {
       }
     },
     refetchInterval: 30000, // 30 秒自動刷新
+    refetchOnMount: 'always', // 每次進入頁面都重新獲取
+    staleTime: 0, // 資料立即過期，確保每次都刷新
+  })
+
+  // 批次送審 Mutation
+  const bulkSubmitMutation = useMutation({
+    mutationFn: async (caseIds: string[]) => {
+      apiClient.setAuthHeaders(getAuthHeaders())
+      return apiClient.post<BulkSubmitResponse>('/nm/bulk-submit', { caseIds })
+    },
+    onSuccess: (result) => {
+      setBulkSubmitResult(result)
+      setBulkSubmitDialogOpen(true)
+      queryClient.invalidateQueries({ queryKey: ['nm-worklist'] })
+    },
+    onError: (error) => {
+      setSnackbar({ open: true, message: `批次送審失敗: ${(error as Error).message}`, severity: 'error' })
+    },
   })
 
   const handleRowClick = (caseId: string) => {
     navigate(`/case/${caseId}`)
+  }
+
+  // 取得「已建立草案」群組中可送審的案件 (非 FAIL)
+  const getDraftedGroup = () => {
+    return data?.groups.find(g => g.groupKey === 'NM_DRAFTED')
+  }
+
+  const getSubmittableCaseIds = (): string[] => {
+    const draftedGroup = getDraftedGroup()
+    if (!draftedGroup) return []
+    // 僅送審 CDS 非 FAIL 的案件
+    return draftedGroup.items
+      .filter(item => item.ruleEval.overallSeverity !== 'FAIL')
+      .map(item => item.caseId)
+  }
+
+  const handleBulkSubmit = () => {
+    const caseIds = getSubmittableCaseIds()
+    if (caseIds.length === 0) {
+      setSnackbar({ open: true, message: '沒有可送審的案件', severity: 'info' })
+      return
+    }
+    bulkSubmitMutation.mutate(caseIds)
   }
 
   const formatDate = (dateStr: string) => {
@@ -152,8 +209,8 @@ export function NMWorklistPage() {
           <Tab
             key={group.groupKey}
             label={
-              <Badge badgeContent={group.count} color="primary">
-                {group.title}
+              <Badge badgeContent={group.count} color="primary" sx={{ pr: 2 }}>
+                <Typography sx={{ fontSize: '1rem' }}>{group.title}</Typography>
               </Badge>
             }
           />
@@ -168,6 +225,34 @@ export function NMWorklistPage() {
         >
           {tabValue === index && (
             <Card>
+              {/* 已建立草案 Tab 顯示批次送審按鈕 */}
+              {group.groupKey === 'NM_DRAFTED' && (
+                <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="body2" color="text.secondary">
+                      可送審案件: {getSubmittableCaseIds().length} / {group.items.length}
+                      {group.items.length - getSubmittableCaseIds().length > 0 && (
+                        <Chip 
+                          label={`${group.items.length - getSubmittableCaseIds().length} 件 CDS FAIL 需個別處理`}
+                          size="small"
+                          color="error"
+                          variant="outlined"
+                          sx={{ ml: 1 }}
+                        />
+                      )}
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      startIcon={<SendIcon />}
+                      onClick={handleBulkSubmit}
+                      disabled={getSubmittableCaseIds().length === 0 || bulkSubmitMutation.isPending}
+                    >
+                      {bulkSubmitMutation.isPending ? '送審中...' : `全部送審 (${getSubmittableCaseIds().length})`}
+                    </Button>
+                  </Stack>
+                </Box>
+              )}
               <CardContent sx={{ p: 0 }}>
                 {group.items.length === 0 ? (
                   <Box p={4} textAlign="center">
@@ -262,6 +347,56 @@ export function NMWorklistPage() {
           )}
         </Box>
       ))}
+
+      {/* 批次送審結果對話框 */}
+      <Dialog 
+        open={bulkSubmitDialogOpen} 
+        onClose={() => setBulkSubmitDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>批次送審結果</DialogTitle>
+        <DialogContent>
+          {bulkSubmitResult && (
+            <Box>
+              <Alert severity="success" sx={{ mb: 2 }}>
+                成功送審 {bulkSubmitResult.ok.length} 件案件
+              </Alert>
+              {bulkSubmitResult.failed.length > 0 && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  {bulkSubmitResult.failed.length} 件案件送審失敗
+                </Alert>
+              )}
+              {bulkSubmitResult.failed.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>失敗原因:</Typography>
+                  {bulkSubmitResult.failed.map((item, i) => (
+                    <Typography key={i} variant="body2" color="error">
+                      • {item.caseId.slice(0, 8)}: {item.message}
+                    </Typography>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBulkSubmitDialogOpen(false)} variant="contained">
+            確定
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      >
+        <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }

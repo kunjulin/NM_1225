@@ -74,13 +74,79 @@ class SnapshotData(BaseModel):
     documents: list[dict[str, Any]] = []
 
 
+class DoseValue(BaseModel):
+    """劑量值"""
+    value: float
+    unit: str = "MBq"
+
+
+class DoseCalculationInfo(BaseModel):
+    """NA-2024 劑量計算資訊"""
+    suggestedDose: float          # 建議劑量 (MBq)
+    minDose: float               # 最小劑量 (MBq)
+    maxDose: float               # 最大劑量 (MBq)
+    formula: str                 # 計算公式說明
+    reference: str = "NA-2024"   # 參考標準
+    weightUsed: Optional[float] = None  # 使用的體重 (kg)
+    isPediatric: bool = False    # 是否為兒童劑量計算
+
+
+class DraftInfo(BaseModel):
+    """草案資訊 (用於快照回應)"""
+    examCode: Optional[str] = None
+    radiopharmaceuticalCode: Optional[str] = None
+    suggestedDose: Optional[DoseValue] = None
+    override: Optional[dict[str, Any]] = None
+    notes: Optional[str] = None
+
+
+class RuleFlagInfo(BaseModel):
+    """規則標記資訊"""
+    code: str
+    severity: str  # PASS, INFO, WARN, FAIL
+    title: str
+    explain: str
+    recommendation: Optional[str] = None
+    tags: list[str] = []
+
+
+class RuleEvalInfo(BaseModel):
+    """規則評估資訊"""
+    overallSeverity: str  # PASS, INFO, WARN, FAIL
+    isBatchEligible: bool
+    flags: list[RuleFlagInfo]
+
+
+class ReviewEventInfo(BaseModel):
+    """審查事件資訊（用於顯示藥師/醫師互動歷程）"""
+    id: str
+    eventType: str  # RETURN, RESPONSE, SUBMIT, APPROVE, etc.
+    actorSubject: str
+    actingRole: str  # NM_PHYSICIAN, PHARMACIST
+    payload: Optional[dict[str, Any]] = None
+    createdAt: str
+
+
 class PatientSnapshotResponse(BaseModel):
-    """病人快照回應"""
+    """病人快照回應
+    
+    包含完整的案件資訊、臨床快照、候選事實、劑量計算與 CDS 評估結果
+    """
     caseId: str
     patientRef: str
     serviceRequestRef: str
+    status: Optional[str] = None  # 案件狀態
     snapshot: SnapshotData
     candidateFacts: list[CandidateFact]
+    # 新增: 草案資訊
+    draftDose: Optional[DoseValue] = None
+    draft: Optional[DraftInfo] = None
+    # 新增: NA-2024 劑量計算
+    doseCalculation: Optional[DoseCalculationInfo] = None
+    # 新增: CDS 規則評估結果
+    ruleEval: Optional[RuleEvalInfo] = None
+    # 新增: 審查事件歷程（藥師退回/醫師回應等）
+    reviewEvents: list[ReviewEventInfo] = []
 
 
 class AcceptAutoFillFact(BaseModel):
@@ -127,4 +193,18 @@ class RejectAutoFillResponse(BaseModel):
     """拒絕自動填入回應"""
     caseId: str
     rejected: bool = True
+
+
+class ManualFactRequest(BaseModel):
+    """手動輸入臨床資料請求"""
+    factType: FactType
+    value: Union[float, str]
+    unit: Optional[str] = None
+
+
+class ManualFactResponse(BaseModel):
+    """手動輸入臨床資料回應"""
+    caseId: str
+    updatedLocalFacts: dict[str, Any]
+    cds: dict[str, Any]  # RuleEval 格式
 
