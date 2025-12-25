@@ -1,0 +1,52 @@
+radiopharmaceuticals:
+  LOCAL_BONE_01:
+    display: "Bone Scan Radiopharm A"
+    system: "http://example.org/local/radiopharm"
+    doseUnitDefault: "MBq"
+  LOCAL_BONE_02:
+    display: "Bone Scan Radiopharm B"
+    system: "http://example.org/local/radiopharm"
+    doseUnitDefault: "MBq"
+  LOCAL_MAG3_01:
+    display: "MAG3 Radiopharm"
+    system: "http://example.org/local/radiopharm"
+    doseUnitDefault: "MBq"
+  LOCAL_DMSA_01:
+    display: "DMSA Radiopharm"
+    system: "http://example.org/local/radiopharm"
+    doseUnitDefault: "MBq"
+  LOCAL_MIBG_01:
+    display: "MIBG Radiopharm"
+    system: "http://example.org/local/radiopharm"
+    doseUnitDefault: "MBq"
+  LOCAL_FDG_01:
+    display: "FDG Radiopharm"
+    system: "http://example.org/local/radiopharm"
+    doseUnitDefault: "MBq"
+
+procedures:
+  BONE_SCAN:
+    display: "Bone Scan"
+    system: "http://example.org/local/procedure"
+  MAG3:
+    display: "MAG3 Renal Scan"
+    system: "http://example.org/local/procedure"
+  DMSA:
+    display: "DMSA Renal Scan"
+    system: "http://example.org/local/procedure"
+  MIBG:
+    display: "MIBG Scan"
+    system: "http://example.org/local/procedure"
+  FDG_PET:
+    display: "FDG PET"
+    system: "http://example.org/local/procedure"
+
+organizations:
+  requesterOrganization:
+    reference: "Organization/demo"
+    display: "Demo Hospital"
+
+practitioners:
+  defaultRequester:
+    reference: "Practitioner/demo"
+    display: "Demo Requester"

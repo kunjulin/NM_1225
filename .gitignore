@@ -1,0 +1,114 @@
+# 作業系統相關檔案
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# 編輯器和 IDE
+# Visual Studio Code / Cursor
+.vscode/
+.cursor/
+*.code-workspace
+.history/
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# 臨時檔案和日誌
+*.log
+*.tmp
+*.temp
+*.bak
+*.backup
+*.cache
+*.pid
+*.seed
+*.pid.lock
+
+# 環境變數和敏感資訊
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.cert
+secrets/
+*.secret
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+cython_debug/
+
+# 建置產物和依賴
+node_modules/
+out/
+*.exe
+*.dll
+*.dylib
+
+# 壓縮檔（可選，視專案需求）
+# *.zip
+# *.tar
+# *.tar.gz
+# *.rar
+
+# 測試覆蓋率報告
+coverage/
+*.lcov
+.nyc_output/
+
+# 其他
+*.orig
+*.rej
+.cache/
+.temp/
+
