@@ -1,113 +1,204 @@
-# NM Medication Stewardship (Backend)
+# NM SMART on FHIR Medication Stewardship System
 
-## Local run
+核子醫學放射藥物用藥治理與臨床決策支援系統
 
-1. Create a virtual environment and install dependencies (PowerShell):
+## 專案概述
 
-```powershell
-py -3.13 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+本系統為基於 FHIR R4、TW Core 與 SMART on FHIR 架構之核子醫學放射藥物用藥治理系統，提供：
+
+- 核醫醫師用藥草案建立與送審
+- 藥師工作清單與批次核准
+- 臨床決策支援 (CDS) 規則引擎
+- 病人快照與自動填入 (Auto-fill)
+- KPI 統計分析儀表板
+- Demo Mode 支援競賽展示
+
+## 系統架構
+
+```
+┌─────────────────┐     ┌─────────────────┐
+│    Frontend     │────▶│     Backend     │
+│  React + Vite   │     │    FastAPI      │
+└─────────────────┘     └────────┬────────┘
+                                 │
+                    ┌────────────┼────────────┐
+                    ▼            ▼            ▼
+              ┌──────────┐ ┌──────────┐ ┌──────────┐
+              │  SQLite  │ │   HAPI   │ │   THAS   │
+              │   (本地)  │ │   FHIR   │ │  Server  │
+              └──────────┘ └──────────┘ └──────────┘
 ```
 
-2. Start the API server:
+## 快速開始
 
-```powershell
-python -m uvicorn app.main:app --reload
-```
+### 前置需求
 
-3. Health check:
+- Python 3.11+
+- Node.js 18+
+- (選用) Docker - 用於執行 HAPI FHIR Server
+
+### 1. 啟動 Backend
 
 ```bash
-curl http://127.0.0.1:8000/health
+cd backend
+
+# 建立虛擬環境
+python -m venv venv
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Linux/Mac
+
+# 安裝依賴
+pip install -r requirements.txt
+
+# 啟動服務
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-## Configuration
+Backend API 文件：http://localhost:8000/api/docs
 
-- `APP_MODE`: `demo` (default) or `production`
-- `DATABASE_URL`: SQLAlchemy URL; defaults to a local SQLite file at `backend/backend.db`
-- `FHIR_BASE_URL`: FHIR base URL for write-back (omit in demo to use stub)
-- Python: 3.13 (or 3.11+)
-
-## Demo mode
-
-Run the API in demo mode (default):
-
-```powershell
-$env:APP_MODE="demo"
-python -m uvicorn app.main:app --reload
-```
-
-Seed deterministic demo cases:
+### 2. 啟動 Frontend
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/demo/seed
+cd frontend
+
+# 安裝依賴
+npm install
+
+# 啟動開發伺服器
+npm run dev
 ```
 
-Switch acting role (stored in memory per subject):
+Frontend：http://localhost:5173
+
+### 3. 建立示範資料
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/demo/set-acting-role ^
-  -H "Content-Type: application/json" ^
-  -H "X-Subject: demo-user" ^
-  -d "{\"actingRole\":\"PHARMACIST\"}"
+# 使用 curl 或在 Frontend 登入後操作
+curl -X POST http://localhost:8000/api/demo/seed \
+  -H "Content-Type: application/json" \
+  -H "X-Subject: demo-admin" \
+  -H "X-Acting-Role: ADMIN"
 ```
 
-Check current demo identity:
+## 目錄結構
+
+```
+NM_1225/
+├── backend/               # FastAPI 後端
+│   ├── app/
+│   │   ├── api/          # API 路由
+│   │   ├── models/       # SQLAlchemy 模型
+│   │   ├── schemas/      # Pydantic schemas
+│   │   ├── services/     # 業務邏輯
+│   │   ├── rules/        # 規則引擎
+│   │   └── fhir/         # FHIR Client
+│   ├── tests/            # 測試
+│   └── requirements.txt
+├── frontend/              # React 前端
+│   ├── src/
+│   │   ├── pages/        # 頁面元件
+│   │   ├── components/   # 共用元件
+│   │   ├── contexts/     # React Context
+│   │   ├── hooks/        # Custom Hooks
+│   │   ├── api/          # API Client
+│   │   └── types/        # TypeScript 型別
+│   └── package.json
+├── spec/                  # 規格文件
+└── README.md
+```
+
+## 環境設定
+
+### Backend 環境變數
+
+| 變數 | 說明 | 預設值 |
+|------|------|--------|
+| `NM_APP_MODE` | 執行模式 (production/demo) | demo |
+| `NM_FHIR_SERVER_TYPE` | FHIR Server 類型 (local/thas) | local |
+| `NM_FHIR_LOCAL_BASE_URL` | Local FHIR URL | http://localhost:8080/fhir |
+| `NM_FHIR_THAS_BASE_URL` | THAS URL | (見 env.example.txt) |
+
+### 切換至 THAS 競賽環境
 
 ```bash
-curl http://127.0.0.1:8000/api/demo/whoami -H "X-Subject: demo-user"
+# 設定環境變數
+export NM_FHIR_SERVER_TYPE=thas
 ```
 
-## Outbox worker
+## 使用者角色
 
-Approving a case creates an outbox row. Run the worker to process deferred write-back:
+| 角色 | 說明 | 功能 |
+|------|------|------|
+| NM_PHYSICIAN | 核醫醫師 | 建立草案、送審、回應退回 |
+| PHARMACIST | 藥師 | Claim、核准、退回、批次核准 |
+| ADMIN | 管理員 | 全部功能 |
+
+## API 端點
+
+### NM Physician
+- `GET /api/nm/worklist` - 工作清單
+- `POST /api/nm/cases/{id}/draft` - 建立草案
+- `POST /api/nm/cases/{id}/submit` - 送審
+- `POST /api/nm/cases/{id}/respond` - 回應退回
+
+### Pharmacy
+- `GET /api/pharmacy/worklist` - 工作清單
+- `POST /api/pharmacy/cases/{id}/claim` - Claim
+- `POST /api/pharmacy/cases/{id}/approve` - 核准
+- `POST /api/pharmacy/cases/{id}/return` - 退回
+- `POST /api/pharmacy/bulk-approve` - 批次核准
+
+### Cases
+- `GET /api/cases/{id}/snapshot` - 病人快照
+- `POST /api/cases/{id}/autofill/accept` - 接受自動填入
+- `POST /api/cases/{id}/autofill/reject` - 拒絕自動填入
+
+### Analytics
+- `GET /api/analytics/summary` - KPI 摘要
+- `GET /api/analytics/autofill/summary` - Auto-fill 統計
+
+### Demo
+- `POST /api/demo/seed` - 建立示範資料
+- `POST /api/demo/set-acting-role` - 切換角色
+- `GET /api/demo/whoami` - 當前身份
+
+## 測試
 
 ```bash
-python -m app.workers.outbox_worker
+cd backend
+pytest tests/ -v
 ```
 
-Demo mode (or no `FHIR_BASE_URL`) logs the payload and returns a fake `MedicationRequest/*` id.
+## 競賽 Demo 模式
 
-Inspect outbox rows in demo mode:
+系統支援 Demo Mode 用於 FHIR 50 競賽展示：
 
-```bash
-curl http://127.0.0.1:8000/api/admin/outbox
-```
+1. 設定 `NM_APP_MODE=demo`
+2. 使用 `/api/demo/seed` 建立示範案例
+3. 在 Frontend 使用角色切換模擬多角色操作
+4. 切換 `NM_FHIR_SERVER_TYPE=thas` 連接競賽環境
 
-## TW Core mapping & validation
+## 規格文件
 
-Mapping catalog lives at `backend/app/mapping/catalog.yaml`. Add local codes by extending:
+詳細規格請參考 `spec/` 目錄：
 
-```yaml
-radiopharmaceuticals:
-  LOCAL_NEW_01:
-    display: "New Radiopharm"
-    system: "http://example.org/local/radiopharm"
-    doseUnitDefault: "MBq"
-procedures:
-  NEW_EXAM:
-    display: "New Exam"
-    system: "http://example.org/local/procedure"
-```
+- `00_overview.md` - 專案概述
+- `01_architecture_low_coupling.md` - 架構設計
+- `02_data_model.md` - 資料模型
+- `03_api_contract.md` - API 合約
+- `04_rules_engine.md` - 規則引擎
+- `05_demo_mode_thas.md` - Demo Mode
+- `06_analytics_kpi.md` - 分析與 KPI
+- `07_nonfunctional_security.md` - 非功能性需求
+- `08_acceptance_tests.md` - 驗收測試
+- `09_frontend_codex_task.md` - 前端任務
+- `99_full_spec_reference.md` - 完整規格
 
-Approval now validates required fields before enqueueing outbox. Typical errors:
-- missing `patientRef` or `serviceRequestRef`
-- unknown `radiopharmaceuticalCode` (not in catalog)
-- missing `suggestedDose.value` or `suggestedDose.unit`
+## 授權
 
-Worker validates the generated MedicationRequest before posting and marks the outbox row `FAILED` on validation errors.
+MIT License
 
-## Analytics export
+## 聯絡
 
-Export KPI summary:
+衛福部 FHIR 50 競賽專案
 
-```bash
-curl -OJ "http://127.0.0.1:8000/api/analytics/export/summary.csv?from=2025-01-01&to=2025-01-31"
-```
-
-Export all analytics files as ZIP:
-
-```bash
-curl -OJ "http://127.0.0.1:8000/api/analytics/export/all.zip?from=2025-01-01&to=2025-01-31"
-```

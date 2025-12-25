@@ -1,29 +1,47 @@
-from __future__ import annotations
+"""
+Analytics API 路由
+KPI 與統計分析
+"""
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
-from app.schemas.analytics import AutofillSummaryResponse, SummaryResponse
-from app.services.analytics import autofill_summary, summary
+from app.database import get_db
+from app.schemas import AnalyticsSummary, AutofillSummary
+from app.services.analytics_service import AnalyticsService
+from app.services.auth_service import get_current_user, CurrentUser
+
+router = APIRouter()
 
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
-
-
-@router.get("/summary", response_model=SummaryResponse)
-def analytics_summary_route(
-    from_date: str = Query(..., alias="from", pattern=r"^\d{4}-\d{2}-\d{2}$"),
-    to_date: str = Query(..., alias="to", pattern=r"^\d{4}-\d{2}-\d{2}$"),
-    db: Session = Depends(get_db),
+@router.get("/summary", response_model=AnalyticsSummary)
+async def get_analytics_summary(
+    from_date: date = Query(..., alias="from", description="起始日期"),
+    to_date: date = Query(..., alias="to", description="結束日期"),
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
-    return summary(db, from_date, to_date)
+    """取得 KPI 摘要
+    
+    包含：
+    - 不適當劑量比例
+    - 藥師介入率
+    - 處理時間統計
+    - 退回原因分佈
+    """
+    service = AnalyticsService(db)
+    return await service.get_summary(from_date, to_date)
 
 
-@router.get("/autofill/summary", response_model=AutofillSummaryResponse)
-def analytics_autofill_route(
-    from_date: str = Query(..., alias="from", pattern=r"^\d{4}-\d{2}-\d{2}$"),
-    to_date: str = Query(..., alias="to", pattern=r"^\d{4}-\d{2}-\d{2}$"),
-    db: Session = Depends(get_db),
+@router.get("/autofill/summary", response_model=AutofillSummary)
+async def get_autofill_summary(
+    from_date: date = Query(..., alias="from", description="起始日期"),
+    to_date: date = Query(..., alias="to", description="結束日期"),
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
-    return autofill_summary(db, from_date, to_date)
+    """取得 Auto-fill 統計摘要"""
+    service = AnalyticsService(db)
+    return await service.get_autofill_summary(from_date, to_date)
+

@@ -1,288 +1,154 @@
-from __future__ import annotations
-
+"""
+規則引擎
+依據 spec/04_rules_engine.md 實作 CDS 規則評估
+"""
 import json
-from pathlib import Path
-from typing import Any
+from typing import Optional
 
-import yaml
-
-from app.db.models import OrderCase
-
-
-_CONFIG_CACHE: dict[str, Any] | None = None
+from app.schemas.rule_eval import RuleEval, RuleFlag, Severity
+from app.models import OrderCase
+from app.rules.config import RulesConfig
 
 
-def _config_path() -> Path:
-    return Path(__file__).resolve().parent / "rules_config.yaml"
-
-
-def _load_config() -> dict[str, Any]:
-    global _CONFIG_CACHE
-    if _CONFIG_CACHE is not None:
-        return _CONFIG_CACHE
-    with _config_path().open("r", encoding="utf-8") as handle:
-        _CONFIG_CACHE = yaml.safe_load(handle) or {}
-    return _CONFIG_CACHE
-
-
-def _parse_json(payload: str) -> Any:
-    if not payload:
-        return {}
-    try:
-        return json.loads(payload)
-    except json.JSONDecodeError:
-        return {}
-
-
-def _extract_weight(payload: Any) -> bool:
-    if isinstance(payload, dict):
-        for key in ("weightKg", "weight"):
-            value = payload.get(key)
-            if isinstance(value, dict) and value.get("value") is not None:
-                return True
-            if isinstance(value, (int, float)):
-                return True
-        weights = payload.get("weights")
-        if isinstance(weights, list):
-            for entry in weights:
-                if isinstance(entry, dict) and entry.get("value") is not None:
-                    return True
-        summary = payload.get("summary")
-        if isinstance(summary, str) and "kg" in summary.lower():
-            return True
-    return False
-
-
-def _extract_renal(payload: Any) -> bool:
-    if isinstance(payload, dict):
-        renal = payload.get("renal")
-        if isinstance(renal, dict):
-            egfr = renal.get("eGFR")
-            if isinstance(egfr, dict) and egfr.get("value") is not None:
-                return True
-            if isinstance(egfr, (int, float)):
-                return True
-        egfr_direct = payload.get("eGFR")
-        if isinstance(egfr_direct, dict) and egfr_direct.get("value") is not None:
-            return True
-        if isinstance(egfr_direct, (int, float)):
-            return True
-        summary = payload.get("summary")
-        if isinstance(summary, str) and "egfr" in summary.lower():
-            return True
-    return False
-
-
-def _extract_allergy_text(payload: Any) -> str | None:
-    if isinstance(payload, dict):
-        allergy = payload.get("allergySummary")
-        if isinstance(allergy, dict):
-            value = allergy.get("value")
-            if isinstance(value, str):
-                return value
-        if isinstance(allergy, str):
-            return allergy
-        summary = payload.get("summary")
-        if isinstance(summary, str) and "allergy" in summary.lower():
-            return summary
-    return None
-
-
-def _has_local_data(payload: Any) -> bool:
-    if isinstance(payload, dict):
-        source = payload.get("source")
-        if isinstance(source, str) and source in {"MANUAL", "AUTOFILL"}:
-            return True
-        for value in payload.values():
-            if _has_local_data(value):
-                return True
-    if isinstance(payload, list):
-        for entry in payload:
-            if _has_local_data(entry):
-                return True
-    return False
-
-
-def _severity_rank(severity: str) -> int:
-    return {"PASS": 0, "INFO": 1, "WARN": 2, "FAIL": 3}.get(severity, 0)
-
-
-def _flag(
-    code: str,
-    severity: str,
-    title: str,
-    explain: str,
-    recommendation: str,
-    data_refs: list[str] | None = None,
-    tags: list[str] | None = None,
-) -> dict:
-    return {
-        "code": code,
-        "severity": severity,
-        "title": title,
-        "explain": explain,
-        "recommendation": recommendation,
-        "dataRefs": data_refs or [],
-        "tags": tags or [],
-    }
-
-
-def evaluate(case: OrderCase) -> dict:
-    config = _load_config()
-    exams = config.get("exams", {}) if isinstance(config, dict) else {}
-
-    draft_payload = _parse_json(case.draft_json)
-    local_facts = _parse_json(case.local_facts_json)
-    snapshot = _parse_json(case.snapshot_json)
-
-    exam_code = draft_payload.get("examCode") if isinstance(draft_payload, dict) else None
-    exam_cfg = exams.get(exam_code, {}) if isinstance(exams, dict) else {}
-
-    allowed_codes = exam_cfg.get("allowedRadiopharmaceuticalCodes", []) if isinstance(exam_cfg, dict) else []
-    required_facts = exam_cfg.get("requiredFacts", []) if isinstance(exam_cfg, dict) else []
-    dose_policy = exam_cfg.get("dosePolicy", {}) if isinstance(exam_cfg, dict) else {}
-
-    flags: list[dict] = []
-
-    has_weight_local = _extract_weight(local_facts)
-    has_renal_local = _extract_renal(local_facts)
-
-    if "WEIGHT_KG" in required_facts and not has_weight_local:
-        flags.append(
-            _flag(
-                "MISSING_WEIGHT",
-                "FAIL",
-                "Missing weight",
-                "Weight is required for dose checks.",
-                "Provide a recent weight measurement.",
-                tags=["dose"],
-            )
+class RuleEngine:
+    """規則引擎
+    
+    評估案件並產生 RuleEval 結果
+    包含 overallSeverity、isBatchEligible、flags[]
+    """
+    
+    def __init__(self):
+        self.config = RulesConfig()
+    
+    def evaluate(self, case: OrderCase) -> RuleEval:
+        """評估案件
+        
+        Args:
+            case: OrderCase 物件
+            
+        Returns:
+            RuleEval 評估結果
+        """
+        flags: list[RuleFlag] = []
+        
+        # 解析資料
+        local_facts = json.loads(case.local_facts_json or "{}")
+        draft = json.loads(case.draft_json or "{}")
+        snapshot = json.loads(case.snapshot_json or "{}")
+        
+        # === 檢查必要資料 ===
+        
+        # 體重檢查
+        weight = local_facts.get("weightKg", {}).get("value")
+        if not weight and not snapshot.get("weightKg"):
+            flags.append(RuleFlag(
+                code="MISSING_WEIGHT",
+                severity=Severity.FAIL,
+                title="缺乏體重資料",
+                explain="無法計算適當劑量，請補齊體重資料",
+                recommendation="請從病人快照接受自動填入或手動輸入體重",
+                tags=["dose", "required"]
+            ))
+        
+        # 腎功能檢查（特定檢查需要）
+        exam_code = draft.get("examCode") or snapshot.get("examCode")
+        if exam_code in ["MAG3", "DTPA"]:
+            egfr = local_facts.get("eGFR", {}).get("value")
+            if not egfr:
+                flags.append(RuleFlag(
+                    code="MISSING_RENAL_FUNCTION",
+                    severity=Severity.WARN,
+                    title="缺乏腎功能資料",
+                    explain="腎功能掃描建議提供 eGFR 資料",
+                    recommendation="請補齊腎功能資料",
+                    tags=["renal", "recommended"]
+                ))
+        
+        # === 劑量檢查 ===
+        
+        suggested_dose = draft.get("suggestedDose", {})
+        dose_value = suggested_dose.get("value")
+        
+        if dose_value and exam_code:
+            # 取得劑量範圍
+            dose_range = self.config.get_dose_range(exam_code)
+            if dose_range:
+                min_dose, max_dose = dose_range
+                if dose_value < min_dose or dose_value > max_dose:
+                    flags.append(RuleFlag(
+                        code="DOSE_OUT_OF_RANGE",
+                        severity=Severity.WARN,
+                        title="劑量超出建議範圍",
+                        explain=f"建議劑量範圍為 {min_dose}-{max_dose} MBq，目前為 {dose_value} MBq",
+                        recommendation="請確認劑量或提供 Override 理由",
+                        tags=["dose"]
+                    ))
+        
+        # === Override 檢查 ===
+        
+        override = draft.get("override", {})
+        if override.get("isOverride"):
+            if override.get("reason"):
+                flags.append(RuleFlag(
+                    code="OVERRIDE_WITH_REASON",
+                    severity=Severity.INFO,
+                    title="醫師已提供 Override 理由",
+                    explain=f"Override 理由: {override.get('reason')}",
+                    tags=["override"]
+                ))
+            else:
+                flags.append(RuleFlag(
+                    code="OVERRIDE_REQUIRES_REVIEW",
+                    severity=Severity.WARN,
+                    title="Override 需要審查",
+                    explain="醫師偏離建議劑量但未提供理由",
+                    recommendation="請補充 Override 理由",
+                    tags=["override"]
+                ))
+        
+        # === 檢查藥物匹配 ===
+        
+        radiopharm_code = draft.get("radiopharmaceuticalCode")
+        if exam_code and radiopharm_code:
+            expected_radiopharm = self.config.get_radiopharmaceutical(exam_code)
+            if expected_radiopharm and radiopharm_code != expected_radiopharm:
+                flags.append(RuleFlag(
+                    code="EXAM_DRUG_MISMATCH",
+                    severity=Severity.FAIL,
+                    title="檢查與藥物不匹配",
+                    explain=f"檢查 {exam_code} 應使用 {expected_radiopharm}，目前為 {radiopharm_code}",
+                    recommendation="請修正放射藥物選擇",
+                    tags=["mismatch"]
+                ))
+        
+        # === 本地資料使用標記 ===
+        
+        for key, fact in local_facts.items():
+            if fact.get("source") in ["MANUAL", "AUTOFILL"]:
+                flags.append(RuleFlag(
+                    code="LOCAL_DATA_USED",
+                    severity=Severity.INFO,
+                    title=f"使用本地資料: {key}",
+                    explain=f"資料來源: {fact.get('source')}",
+                    tags=["local_data"]
+                ))
+        
+        # === 計算整體結果 ===
+        
+        # 找出最高嚴重度
+        severity_order = {Severity.FAIL: 3, Severity.WARN: 2, Severity.INFO: 1, Severity.PASS: 0}
+        max_severity = Severity.PASS
+        for flag in flags:
+            if severity_order.get(flag.severity, 0) > severity_order.get(max_severity, 0):
+                max_severity = flag.severity
+        
+        # 批次核准資格
+        has_fail = any(f.severity == Severity.FAIL for f in flags)
+        is_batch_eligible = not has_fail and max_severity != Severity.FAIL
+        
+        return RuleEval(
+            overallSeverity=max_severity,
+            isBatchEligible=is_batch_eligible,
+            flags=flags
         )
 
-    if "RENAL_FUNCTION" in required_facts and not has_renal_local:
-        flags.append(
-            _flag(
-                "MISSING_RENAL_FUNCTION",
-                "FAIL",
-                "Missing renal function",
-                "Renal function is required for dosing.",
-                "Provide a recent eGFR or renal lab.",
-                tags=["renal"],
-            )
-        )
-
-    allergy_text = _extract_allergy_text(local_facts) or _extract_allergy_text(snapshot)
-    if not allergy_text:
-        flags.append(
-            _flag(
-                "ALLERGY_REVIEW_REQUIRED",
-                "WARN",
-                "Allergy review required",
-                "Allergy history is missing.",
-                "Confirm allergy history before approval.",
-                tags=["allergy"],
-            )
-        )
-    elif any(keyword in allergy_text.lower() for keyword in ("contrast", "radiopharm")):
-        flags.append(
-            _flag(
-                "ALLERGY_REVIEW_REQUIRED",
-                "WARN",
-                "Allergy review required",
-                "Allergy history indicates a contrast concern.",
-                "Review allergy details before approval.",
-                tags=["allergy"],
-            )
-        )
-
-    if _has_local_data(local_facts):
-        flags.append(
-            _flag(
-                "LOCAL_DATA_USED",
-                "INFO",
-                "Local data used",
-                "Local facts were entered manually or via autofill.",
-                "Verify local facts if needed.",
-                tags=["demo"],
-            )
-        )
-
-    radiopharm = draft_payload.get("radiopharmaceuticalCode") if isinstance(draft_payload, dict) else None
-    if exam_code and radiopharm and allowed_codes and radiopharm not in allowed_codes:
-        flags.append(
-            _flag(
-                "EXAM_DRUG_MISMATCH",
-                "FAIL",
-                "Exam and drug mismatch",
-                "Selected radiopharmaceutical is not allowed for this exam.",
-                "Choose an allowed radiopharmaceutical.",
-                tags=["dose"],
-            )
-        )
-
-    suggested_dose = None
-    if isinstance(draft_payload, dict):
-        suggested = draft_payload.get("suggestedDose")
-        if isinstance(suggested, dict):
-            value = suggested.get("value")
-            if isinstance(value, (int, float)):
-                suggested_dose = value
-
-    min_dose = dose_policy.get("min") if isinstance(dose_policy, dict) else None
-    max_dose = dose_policy.get("max") if isinstance(dose_policy, dict) else None
-    if suggested_dose is not None and isinstance(min_dose, (int, float)) and isinstance(max_dose, (int, float)):
-        if suggested_dose < min_dose or suggested_dose > max_dose:
-            flags.append(
-                _flag(
-                    "DOSE_OUT_OF_RANGE",
-                    "FAIL",
-                    "Dose out of range",
-                    "Suggested dose is outside the configured range.",
-                    "Adjust dose to the allowed range.",
-                    tags=["dose"],
-                )
-            )
-
-    override = False
-    if isinstance(draft_payload, dict):
-        override_payload = draft_payload.get("override")
-        if isinstance(override_payload, dict):
-            override = bool(override_payload.get("isOverride"))
-    if override:
-        flags.append(
-            _flag(
-                "OVERRIDE_REQUIRES_REVIEW",
-                "WARN",
-                "Override requires review",
-                "Override requested by NM.",
-                "Review override justification before approval.",
-                tags=["dose"],
-            )
-        )
-
-    overall = "PASS"
-    for flag in flags:
-        severity = flag.get("severity", "PASS")
-        if _severity_rank(severity) > _severity_rank(overall):
-            overall = severity
-    overallSeverity = "FAIL" if overall == "FAIL" else "WARN" if overall == "WARN" else "PASS"
-
-    has_fail = any(flag.get("severity") == "FAIL" for flag in flags)
-    required_present = True
-    if "WEIGHT_KG" in required_facts and not has_weight_local:
-        required_present = False
-    if "RENAL_FUNCTION" in required_facts and not has_renal_local:
-        required_present = False
-
-    is_batch_eligible = (
-        overallSeverity != "FAIL"
-        and not has_fail
-        and required_present
-        and not override
-    )
-
-    return {
-        "overallSeverity": overallSeverity,
-        "isBatchEligible": bool(is_batch_eligible),
-        "flags": flags,
-    }

@@ -1,1 +1,4 @@
-from __future__ import annotations
+"""
+FHIR Client 模組
+"""
+

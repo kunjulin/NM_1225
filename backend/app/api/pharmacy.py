@@ -1,94 +1,89 @@
-from __future__ import annotations
+"""
+Pharmacy API 路由
+藥師工作清單與案件審核操作
+"""
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, Query
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
-from app.deps.auth import get_login_subject, resolve_acting_role
-from app.schemas.workflow import (
+from app.database import get_db
+from app.schemas import (
+    WorklistResponse,
+    ClaimResponse,
     ApproveResponse,
+    ReturnRequest,
+    ReturnResponse,
     BulkApproveRequest,
     BulkApproveResponse,
-    ClaimResponse,
-    ReturnRequest,
-    SubmitResponse,
 )
-from app.schemas.worklist import WorklistResponse
-from app.services.workflow import (
-    approve_case,
-    bulk_approve,
-    claim_case,
-    return_case,
-)
-from app.services.worklist import get_pharmacy_worklist
+from app.services.case_service import CaseService
+from app.services.auth_service import get_current_user, CurrentUser
 
-
-router = APIRouter(prefix="/pharmacy", tags=["pharmacy"])
+router = APIRouter()
 
 
 @router.get("/worklist", response_model=WorklistResponse)
-def get_pharmacy_worklist_route(
-    status: str | None = Query(None, pattern="^(PHARM_READY|PHARM_IN_PROGRESS)$"),
-    db: Session = Depends(get_db),
-    login_subject: str = Depends(get_login_subject),
-) -> WorklistResponse:
-    statuses = [status] if status else None
-    return get_pharmacy_worklist(db, statuses, login_subject)
-
-
-@router.post("/cases/{caseId}/claim", response_model=ClaimResponse)
-def claim_case_route(
-    caseId: str,
-    db: Session = Depends(get_db),
-    login_subject: str = Depends(get_login_subject),
-    x_acting_role: str | None = Header(None, alias="X-Acting-Role"),
+async def get_pharmacy_worklist(
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
-    acting_role = resolve_acting_role(x_acting_role, "PHARMACIST", login_subject)
-    return claim_case(db, caseId, login_subject, acting_role)
+    """取得藥師工作清單
+    
+    分群顯示：
+    - exceptions: 需逐筆審查（有 FAIL flags）
+    - batchEligible: 可批次核准
+    - myClaimed: 我已 Claim
+    """
+    service = CaseService(db)
+    return await service.get_pharmacy_worklist(current_user.subject, status)
 
 
-@router.post("/cases/{caseId}/approve", response_model=ApproveResponse)
-def approve_case_route(
-    caseId: str,
-    db: Session = Depends(get_db),
-    login_subject: str = Depends(get_login_subject),
-    x_acting_role: str | None = Header(None, alias="X-Acting-Role"),
+@router.post("/cases/{case_id}/claim", response_model=ClaimResponse)
+async def claim_case(
+    case_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
-    acting_role = resolve_acting_role(x_acting_role, "PHARMACIST", login_subject)
-    return approve_case(db, caseId, login_subject, acting_role)
+    """Claim 案件（單人覆核）"""
+    service = CaseService(db)
+    return await service.claim_case(case_id, current_user)
 
 
-@router.post("/cases/{caseId}/return", response_model=SubmitResponse)
-def return_case_route(
-    caseId: str,
-    payload: ReturnRequest,
-    db: Session = Depends(get_db),
-    login_subject: str = Depends(get_login_subject),
-    x_acting_role: str | None = Header(None, alias="X-Acting-Role"),
+@router.post("/cases/{case_id}/approve", response_model=ApproveResponse)
+async def approve_case(
+    case_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
-    acting_role = resolve_acting_role(x_acting_role, "PHARMACIST", login_subject)
-    return return_case(
-        db,
-        caseId,
-        payload.returnReasonCodes,
-        payload.comment,
-        login_subject,
-        acting_role,
-    )
+    """核准案件"""
+    service = CaseService(db)
+    return await service.approve_case(case_id, current_user)
+
+
+@router.post("/cases/{case_id}/return", response_model=ReturnResponse)
+async def return_case(
+    case_id: str,
+    request: ReturnRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """退回案件給核醫"""
+    service = CaseService(db)
+    return await service.return_case(case_id, request, current_user)
 
 
 @router.post("/bulk-approve", response_model=BulkApproveResponse)
-def bulk_approve_route(
-    payload: BulkApproveRequest,
-    db: Session = Depends(get_db),
-    login_subject: str = Depends(get_login_subject),
-    x_acting_role: str | None = Header(None, alias="X-Acting-Role"),
+async def bulk_approve(
+    request: BulkApproveRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
-    acting_role = resolve_acting_role(x_acting_role, "PHARMACIST", login_subject)
-    return bulk_approve(
-        db,
-        payload.caseIds,
-        payload.note,
-        login_subject,
-        acting_role,
-    )
+    """批次核准案件
+    
+    只有符合批次核准資格的案件會被核准
+    """
+    service = CaseService(db)
+    return await service.bulk_approve(request.caseIds, request.note, current_user)
+

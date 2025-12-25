@@ -1,0 +1,66 @@
+# NM Medication Stewardship - Rules Configuration
+# 核子醫學放射藥物用藥規則配置
+
+exams:
+  BONE_SCAN:
+    name: 骨骼掃描
+    radiopharmaceutical: local-tc99m-mdp
+    dose_range: [555, 925]  # MBq
+    required_facts:
+      - weight
+    pediatric_factor: 0.0267  # MBq/kg (NA-2024)
+    notes: 標準成人劑量 740 MBq
+  
+  MAG3:
+    name: 腎功能掃描
+    radiopharmaceutical: local-tc99m-mag3
+    dose_range: [185, 370]
+    required_facts:
+      - weight
+      - renal
+    notes: 需考慮腎功能
+  
+  DMSA:
+    name: 腎臟皮質掃描
+    radiopharmaceutical: local-tc99m-dmsa
+    dose_range: [37, 185]
+    required_facts:
+      - weight
+    pediatric_factor: 0.0178
+    notes: 兒童常見檢查
+  
+  MIBG:
+    name: MIBG 掃描
+    radiopharmaceutical: local-i123-mibg
+    dose_range: [111, 370]
+    required_facts:
+      - weight
+    notes: 神經內分泌腫瘤診斷
+  
+  FDG_PET:
+    name: 正子造影
+    radiopharmaceutical: local-f18-fdg
+    dose_range: [185, 444]
+    required_facts:
+      - weight
+    pediatric_factor: 0.0296
+    notes: 標準成人劑量 370 MBq
+  
+  DTPA:
+    name: 腎絲球過濾率掃描
+    radiopharmaceutical: local-tc99m-dtpa
+    dose_range: [185, 370]
+    required_facts:
+      - weight
+      - renal
+    notes: GFR 測量
+
+batch_policy:
+  # 批次核准政策
+  allow_warn_flags: true
+  max_warn_count: 2
+  require_weight: true
+  require_renal_for_exams:
+    - MAG3
+    - DTPA
+

@@ -1,62 +1,84 @@
-from __future__ import annotations
+"""
+Demo Mode API 路由
+僅在 APP_MODE=demo 時啟用
+"""
+from fastapi import APIRouter, Depends, Header
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from app.database import get_db
+from app.schemas import (
+    SetActingRoleRequest,
+    WhoAmIResponse,
+    ActingRole,
+)
+from app.schemas.demo import SeedRequest, SeedResponse
+from app.services.demo_service import DemoService
+from app.services.auth_service import get_current_user, CurrentUser
+from app.config import get_settings
 
-from app.db.session import get_db
-from app.deps.auth import get_login_subject
-from app.deps.demo_mode import require_demo_mode
-from app.services.demo_seed import seed_demo_cases
-from app.services.demo_state import get_acting_role, set_acting_role
-from app.settings import get_settings
-
-
-router = APIRouter(prefix="/demo", tags=["demo"], dependencies=[Depends(require_demo_mode)])
-
-
-class SetActingRoleRequest(BaseModel):
-    actingRole: str
-
-
-class WhoAmIResponse(BaseModel):
-    subject: str
-    actingRole: str
-    appMode: str
-
-
-@router.post("/seed")
-def seed_demo_route(
-    db: Session = Depends(get_db),
-    login_subject: str = Depends(get_login_subject),
-):
-    acting_role = get_acting_role(login_subject) or "ADMIN"
-    return seed_demo_cases(db, login_subject, acting_role)
-
-
-@router.post("/set-acting-role")
-def set_acting_role_route(
-    payload: SetActingRoleRequest,
-    login_subject: str = Depends(get_login_subject),
-):
-    set_acting_role(login_subject, payload.actingRole)
-    return {"subject": login_subject, "actingRole": payload.actingRole}
+router = APIRouter()
 
 
 @router.get("/whoami", response_model=WhoAmIResponse)
-def whoami_route(
-    login_subject: str = Depends(get_login_subject),
+async def whoami(
+    current_user: CurrentUser = Depends(get_current_user),
 ):
+    """取得當前登入者身份資訊"""
     settings = get_settings()
-    return {
-        "subject": login_subject,
-        "actingRole": payload_acting_role(login_subject),
-        "appMode": settings.app_mode,
-    }
+    return WhoAmIResponse(
+        subject=current_user.subject,
+        actingRole=current_user.acting_role,
+        appMode=settings.app_mode.value,
+        isDemo=settings.is_demo_mode,
+    )
 
 
-def payload_acting_role(subject: str) -> str:
+@router.post("/set-acting-role", response_model=WhoAmIResponse)
+async def set_acting_role(
+    request: SetActingRoleRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """切換操作角色（Demo Mode 專用）
+    
+    允許在單一 partition 環境下模擬多角色操作
+    """
     settings = get_settings()
-    if settings.app_mode != "demo":
-        return "NM_PHYSICIAN"
-    return get_acting_role(subject) or "NM_PHYSICIAN"
+    # 在實際實作中，這會更新 session 或返回新的 token
+    # Demo 模式下，角色由 X-Acting-Role header 控制
+    return WhoAmIResponse(
+        subject=current_user.subject,
+        actingRole=request.actingRole,
+        appMode=settings.app_mode.value,
+        isDemo=settings.is_demo_mode,
+    )
+
+
+@router.post("/seed", response_model=SeedResponse)
+async def seed_demo_data(
+    request: SeedRequest = SeedRequest(),
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """建立示範資料
+    
+    包含：
+    - 成人標準劑量案例
+    - 兒童體重調整案例
+    - 腎功能不全案例
+    - 缺乏體重資料案例（autofill 測試）
+    - 劑量超出範圍案例
+    """
+    service = DemoService(db)
+    return await service.seed_demo_data(request, current_user)
+
+
+@router.post("/reset")
+async def reset_demo_data(
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """重置示範資料（清除所有本地資料）"""
+    service = DemoService(db)
+    await service.reset_all()
+    return {"message": "Demo data reset successfully"}
+
