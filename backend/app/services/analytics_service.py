@@ -242,3 +242,4 @@ class AnalyticsService:
             byFactType=fact_type_stats,
         )
 
+

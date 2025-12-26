@@ -62,3 +62,4 @@ class Outbox(Base):
         Index("ix_outbox_status_retry", "status", "next_retry_at"),
     )
 
+

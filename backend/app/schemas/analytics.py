@@ -90,3 +90,4 @@ class AutofillSummary(BaseModel):
     byFactType: list[FactTypeStat]
     impact: Optional[AutofillImpact] = None
 
+

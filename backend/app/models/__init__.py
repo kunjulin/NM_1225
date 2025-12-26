@@ -7,3 +7,4 @@ from app.models.outbox import Outbox
 
 __all__ = ["OrderCase", "ReviewEvent", "Outbox"]
 
+

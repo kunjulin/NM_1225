@@ -38,42 +38,167 @@
 
 - Python 3.11+
 - Node.js 18+
-- (選用) Docker - 用於執行 HAPI FHIR Server
+- Docker & Docker Compose - 用於容器化部署
 
-### 1. 啟動 Backend
+---
+
+## Docker 部署 (推薦)
+
+使用 Docker Compose 可一鍵啟動完整環境，支援兩種模式：
+
+### 模式一：Local FHIR 環境
+
+連接本地 HAPI FHIR Server，適合開發與測試：
+
+```bash
+# 啟動所有服務
+docker-compose -f docker-compose.local.yml up -d
+
+# 查看服務狀態
+docker-compose -f docker-compose.local.yml ps
+
+# 查看日誌
+docker-compose -f docker-compose.local.yml logs -f
+
+# 停止服務
+docker-compose -f docker-compose.local.yml down
+```
+
+**服務端點：**
+| 服務 | URL |
+|------|-----|
+| Frontend | http://localhost:5173 |
+| Backend API | http://localhost:8000/api/docs |
+| HAPI FHIR Server | http://localhost:8080/fhir |
+| SMART Launcher | http://localhost:4000 |
+
+### 模式二：THAS 臺灣50競賽環境
+
+連接衛福部臺灣50 SMART on FHIR 測試平台：
+
+```bash
+# 啟動服務 (連接 THAS)
+docker-compose -f docker-compose.thas.yml up -d
+
+# 停止服務
+docker-compose -f docker-compose.thas.yml down
+```
+
+**THAS 競賽平台資訊：**
+- ISS Server URL: `https://thas.mohw.gov.tw/v/r4/sim/WzIsIiIsIiIsIkFVVE8iLDAsMCwwLCIiLCIiLCIiLCIiLCIiLCIiLCIiLDAsMSwiIl0/fhir`
+- 測試類型: Provider Standalone Launch Test
+
+**服務端點：**
+| 服務 | URL |
+|------|-----|
+| Frontend | http://localhost:5173 |
+| Backend API | http://localhost:8000/api/docs |
+
+### Docker 建立示範資料
+
+啟動服務後，建立測試資料：
+
+```bash
+# 使用 curl
+curl -X POST http://localhost:8000/api/demo/seed \
+  -H "Content-Type: application/json" \
+  -H "X-Subject: demo-admin" \
+  -H "X-Acting-Role: ADMIN"
+```
+
+---
+
+## 手動部署 (開發模式)
+
+### 快速啟動 (使用腳本)
+
+**Windows PowerShell:**
+```powershell
+# 終端機 1: 啟動 Backend
+.\start-backend.ps1
+
+# 終端機 2: 啟動 Frontend
+.\start-frontend.ps1
+```
+
+**Linux/Mac:**
+```bash
+# 終端機 1: 啟動 Backend
+./start-backend.sh
+
+# 終端機 2: 啟動 Frontend
+./start-frontend.sh
+```
+
+### 手動啟動步驟
+
+#### 1. 啟動 Backend
 
 ```bash
 cd backend
 
-# 建立虛擬環境
+# 建立虛擬環境 (首次執行)
 python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
 
-# 安裝依賴
+# 啟動虛擬環境
+# Windows:
+venv\Scripts\activate
+# Linux/Mac:
+source venv/bin/activate
+
+# 安裝依賴 (首次執行)
 pip install -r requirements.txt
+
+# 建立環境變數檔案 (首次執行，選用)
+# Windows:
+copy env.example.txt .env
+# Linux/Mac:
+cp env.example.txt .env
 
 # 啟動服務
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Backend API 文件：http://localhost:8000/api/docs
+**Backend API 文件：** http://localhost:8000/api/docs
 
-### 2. 啟動 Frontend
+#### 2. 啟動 Frontend
+
+開啟**另一個終端機**：
 
 ```bash
 cd frontend
 
-# 安裝依賴
+# 安裝依賴 (首次執行)
 npm install
 
 # 啟動開發伺服器
 npm run dev
 ```
 
-Frontend：http://localhost:5173
+**Frontend：** http://localhost:5173
 
-### 3. 建立示範資料
+#### 3. (選用) 啟動 HAPI FHIR Server
+
+如果使用 Local FHIR 模式，需要啟動 HAPI FHIR Server：
+
+```bash
+# 使用 Docker (推薦)
+docker run -d \
+  --name hapi-fhir \
+  -p 8080:8080 \
+  -e hapi.fhir.default_encoding=json \
+  -e hapi.fhir.fhir_version=R4 \
+  -e hapi.fhir.allow_external_references=true \
+  -e hapi.fhir.cors.allowed_origin=* \
+  hapiproject/hapi:latest
+
+# 或使用 docker-compose (僅啟動 HAPI FHIR)
+docker-compose -f docker-compose.local.yml up -d hapi-fhir
+```
+
+**HAPI FHIR Server：** http://localhost:8080/fhir
+
+#### 4. 建立示範資料
 
 ```bash
 # 使用 curl 或在 Frontend 登入後操作
@@ -96,6 +221,7 @@ NM_1225/
 │   │   ├── rules/        # 規則引擎
 │   │   └── fhir/         # FHIR Client
 │   ├── tests/            # 測試
+│   ├── Dockerfile        # Backend Docker 映像檔
 │   └── requirements.txt
 ├── frontend/              # React 前端
 │   ├── src/
@@ -105,7 +231,12 @@ NM_1225/
 │   │   ├── hooks/        # Custom Hooks
 │   │   ├── api/          # API Client
 │   │   └── types/        # TypeScript 型別
+│   ├── Dockerfile        # Frontend Docker 映像檔
+│   ├── nginx.conf        # Nginx 設定
 │   └── package.json
+├── docker-compose.yml          # 共用 volumes 定義
+├── docker-compose.local.yml    # Local FHIR 環境
+├── docker-compose.thas.yml     # THAS 臺灣50 環境
 ├── spec/                  # 規格文件
 └── README.md
 ```
@@ -123,10 +254,27 @@ NM_1225/
 
 ### 切換至 THAS 競賽環境
 
+**方法一：使用環境變數**
+
 ```bash
-# 設定環境變數
+# Linux/Mac
 export NM_FHIR_SERVER_TYPE=thas
+
+# Windows PowerShell
+$env:NM_FHIR_SERVER_TYPE="thas"
+
+# Windows CMD
+set NM_FHIR_SERVER_TYPE=thas
 ```
+
+**方法二：修改 `.env` 檔案**
+
+在 `backend/.env` 檔案中設定：
+```
+NM_FHIR_SERVER_TYPE=thas
+```
+
+然後重新啟動 Backend 服務。
 
 ## 使用者角色
 

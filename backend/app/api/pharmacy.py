@@ -87,3 +87,4 @@ async def bulk_approve(
     service = CaseService(db)
     return await service.bulk_approve(request.caseIds, request.note, current_user)
 
+

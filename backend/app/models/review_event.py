@@ -58,3 +58,4 @@ class ReviewEvent(Base):
         Index("ix_review_events_case_created", "case_id", "created_at"),
     )
 
+

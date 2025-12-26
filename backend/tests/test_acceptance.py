@@ -350,3 +350,4 @@ class TestScenario5:
         # Then: 應該建立 Outbox 項目（透過查詢資料庫確認）
         # 在實際測試中，可以查詢 outbox 表確認項目已建立
 
+

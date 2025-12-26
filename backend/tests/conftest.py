@@ -13,3 +13,4 @@ def event_loop() -> Generator:
     yield loop
     loop.close()
 
+

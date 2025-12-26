@@ -51,3 +51,4 @@ class OrderCase(Base):
         Index("ix_order_cases_patient_updated", "patient_ref", "updated_at"),
     )
 
+

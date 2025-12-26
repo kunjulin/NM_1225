@@ -231,3 +231,4 @@ class FHIRClient:
             ] if draft.get("notes") else []
         }
 
+

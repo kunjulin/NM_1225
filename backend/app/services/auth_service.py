@@ -96,3 +96,4 @@ def require_role(*roles: ActingRole):
         return current_user
     return dependency
 
+

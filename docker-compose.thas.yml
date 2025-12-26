@@ -1,0 +1,61 @@
+# NM Medication Stewardship - THAS 臺灣50競賽環境
+# 核醫藥物管理系統 - 連接臺灣50 SMART on FHIR 測試平台
+#
+# 使用方式:
+#   啟動: docker-compose -f docker-compose.thas.yml up -d
+#   停止: docker-compose -f docker-compose.thas.yml down
+#   查看日誌: docker-compose -f docker-compose.thas.yml logs -f
+#
+# 服務端點:
+#   - Frontend:      http://localhost:5173
+#   - Backend API:   http://localhost:8000/api/docs
+#
+# THAS 競賽平台:
+#   - ISS Server URL: https://thas.mohw.gov.tw/v/r4/sim/WzIsIiIsIiIsIkFVVE8iLDAsMCwwLCIiLCIiLCIiLCIiLCIiLCIiLCIiLDAsMSwiIl0/fhir
+#   - 測試類型: Provider Standalone Launch Test
+
+services:
+  # Backend - FastAPI 後端服務
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nm-backend-thas
+    ports:
+      - "8000:8000"
+    environment:
+      - NM_APP_MODE=demo
+      - NM_DEBUG=false
+      - NM_FHIR_SERVER_TYPE=thas
+      - NM_FHIR_THAS_BASE_URL=https://thas.mohw.gov.tw/v/r4/sim/WzIsIiIsIiIsIkFVVE8iLDAsMCwwLCIiLCIiLCIiLCIiLCIiLCIiLCIiLDAsMSwiIl0/fhir
+      - NM_DATABASE_URL=sqlite:///./nm_stewardship.db
+      - NM_CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://frontend:80"]
+      - NM_FHIR_TIMEOUT_SECONDS=30.0
+    volumes:
+      - backend-data:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/demo/whoami')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Frontend - React 前端服務 (Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nm-frontend-thas
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+    name: nm-stewardship-backend-data-thas
+
+

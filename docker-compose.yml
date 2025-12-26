@@ -1,0 +1,12 @@
+# NM Medication Stewardship - Docker Compose 共用設定
+# 核醫藥物管理系統 - 共用 volumes 定義
+#
+# 使用方式:
+#   Local FHIR 環境:  docker-compose -f docker-compose.local.yml up -d
+#   THAS 競賽環境:    docker-compose -f docker-compose.thas.yml up -d
+
+volumes:
+  hapi-data:
+    name: nm-stewardship-hapi-data
+  backend-data:
+    name: nm-stewardship-backend-data

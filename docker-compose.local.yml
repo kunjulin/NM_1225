@@ -1,0 +1,100 @@
+# NM Medication Stewardship - Local FHIR 環境
+# 核醫藥物管理系統 - 本地 HAPI FHIR 測試環境
+#
+# 使用方式:
+#   啟動: docker-compose -f docker-compose.local.yml up -d
+#   停止: docker-compose -f docker-compose.local.yml down
+#   查看日誌: docker-compose -f docker-compose.local.yml logs -f
+#
+# 服務端點:
+#   - Frontend:      http://localhost:5173
+#   - Backend API:   http://localhost:8000/api/docs
+#   - HAPI FHIR:     http://localhost:8080/fhir
+#   - SMART Launcher: http://localhost:4000
+
+services:
+  # HAPI FHIR R4 Server - 官方 HAPI FHIR 伺服器
+  hapi-fhir:
+    image: hapiproject/hapi:latest
+    container_name: nm-hapi-fhir
+    ports:
+      - "8080:8080"
+    environment:
+      - hapi.fhir.default_encoding=json
+      - hapi.fhir.fhir_version=R4
+      - hapi.fhir.allow_external_references=true
+      - hapi.fhir.allow_multiple_delete=true
+      - hapi.fhir.cors.allow_Credentials=true
+      - hapi.fhir.cors.allowed_origin=*
+    volumes:
+      - hapi-data:/data/hapi
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/fhir/metadata"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # SMART Launcher v2 - 提供 SMART on FHIR 授權代理
+  smart-launcher:
+    image: smartonfhir/smart-launcher-2:latest
+    container_name: nm-smart-launcher
+    ports:
+      - "4000:80"
+    environment:
+      - FHIR_SERVER_R4=http://hapi-fhir:8080/fhir
+      - NODE_ENV=production
+    depends_on:
+      hapi-fhir:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Backend - FastAPI 後端服務
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nm-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - NM_APP_MODE=demo
+      - NM_DEBUG=false
+      - NM_FHIR_SERVER_TYPE=local
+      - NM_FHIR_LOCAL_BASE_URL=http://hapi-fhir:8080/fhir
+      - NM_DATABASE_URL=sqlite:///./nm_stewardship.db
+      - NM_CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://frontend:80"]
+    volumes:
+      - backend-data:/app
+    depends_on:
+      hapi-fhir:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/demo/whoami')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Frontend - React 前端服務 (Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nm-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  hapi-data:
+    name: nm-stewardship-hapi-data
+  backend-data:
+    name: nm-stewardship-backend-data
+
+

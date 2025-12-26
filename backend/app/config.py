@@ -78,3 +78,4 @@ def get_settings() -> Settings:
     """取得設定單例"""
     return Settings()
 
+

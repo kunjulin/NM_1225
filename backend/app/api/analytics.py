@@ -45,3 +45,4 @@ async def get_autofill_summary(
     service = AnalyticsService(db)
     return await service.get_autofill_summary(from_date, to_date)
 
+

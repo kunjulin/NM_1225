@@ -16,3 +16,4 @@ class ErrorResponse(BaseModel):
     """標準錯誤回應"""
     error: ErrorDetail
 
+
