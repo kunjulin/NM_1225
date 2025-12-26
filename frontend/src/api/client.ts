@@ -82,7 +82,7 @@ export class ApiClient {
         }
       }
       console.error('[API] Error:', errorData)
-      throw new Error(errorData.error?.message || errorData.detail || 'Request failed')
+      throw new Error(errorData.error?.message || (errorData as any).detail || 'Request failed')
     }
 
     const data = await response.json()

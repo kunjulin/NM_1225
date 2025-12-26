@@ -89,6 +89,73 @@ DEMO_SCENARIOS = {
             }
         ]
     },
+    "approved_cases": {
+        "name": "已批准案例（用於 CSV 匯出測試）",
+        "description": "已審查完成並批准的案例",
+        "cases": [
+            {
+                "examCode": "BONE_SCAN",
+                "examDisplay": "骨骼掃描 (Tc-99m MDP)",
+                "patientName": "陳建國",
+                "patientId": "F123456789",
+                "weightKg": 65.0,
+                "suggestedDose": {"value": 740, "unit": "MBq"},
+                "status": "APPROVED",
+                "submitActor": "demo-nm-f",
+                "approveActor": "demo-pharmacist",
+                "approveDateOffset": -2,  # 2 天前批准
+            },
+            {
+                "examCode": "DMSA",
+                "examDisplay": "腎臟皮質掃描 (Tc-99m DMSA)",
+                "patientName": "黃淑芬",
+                "patientId": "G234567890",
+                "weightKg": 45.0,
+                "suggestedDose": {"value": 111, "unit": "MBq"},
+                "status": "APPROVED",
+                "submitActor": "demo-nm-m",
+                "approveActor": "demo-pharmacist",
+                "approveDateOffset": -1,  # 1 天前批准
+            },
+            {
+                "examCode": "MAG3",
+                "examDisplay": "腎功能掃描 (Tc-99m MAG3)",
+                "patientName": "劉志強",
+                "patientId": "H345678901",
+                "weightKg": 75.0,
+                "eGFR": 50.0,
+                "suggestedDose": {"value": 185, "unit": "MBq"},
+                "status": "APPROVED",
+                "submitActor": "demo-nm-f",
+                "approveActor": "demo-pharmacist",
+                "approveDateOffset": -3,  # 3 天前批准
+            },
+            {
+                "examCode": "FDG_PET",
+                "examDisplay": "正子造影 (F-18 FDG)",
+                "patientName": "吳美玲",
+                "patientId": "I456789012",
+                "weightKg": 60.0,
+                "suggestedDose": {"value": 370, "unit": "MBq"},
+                "status": "APPROVED",
+                "submitActor": "demo-nm-m",
+                "approveActor": "demo-pharmacist",
+                "approveDateOffset": -5,  # 5 天前批准
+            },
+            {
+                "examCode": "BONE_SCAN",
+                "examDisplay": "骨骼掃描 (Tc-99m MDP)",
+                "patientName": "周文雄",
+                "patientId": "J567890123",
+                "weightKg": 80.0,
+                "suggestedDose": {"value": 740, "unit": "MBq"},
+                "status": "APPROVED",
+                "submitActor": "demo-nm-f",
+                "approveActor": "demo-pharmacist",
+                "approveDateOffset": -7,  # 7 天前批准
+            },
+        ]
+    },
 }
 
 
@@ -104,10 +171,18 @@ class DemoService:
         current_user: CurrentUser
     ) -> SeedResponse:
         """建立示範資料"""
+        return await self.seed_test_data(request, current_user)
+    
+    async def seed_test_data(
+        self, 
+        request: SeedRequest,
+        current_user: CurrentUser
+    ) -> SeedResponse:
+        """建立測試資料（可在 Production Mode 使用）"""
         if request.clearExisting:
             await self.reset_all()
         
-        # 決定要建立的情境
+        # 決定要建立的情境（預設包含所有情境，包括已批准的案例）
         scenario_keys = request.scenarios or list(DEMO_SCENARIOS.keys())
         
         created_count = 0
@@ -198,6 +273,10 @@ class DemoService:
             }
             status = CaseStatus.NM_DRAFTED.value
         
+        # 如果指定了狀態，使用指定的狀態
+        if case_data.get("status"):
+            status = case_data["status"]
+        
         # 建立 OrderCase
         order_case = OrderCase(
             id=case_id,
@@ -214,5 +293,34 @@ class DemoService:
         )
         
         self.db.add(order_case)
+        
+        # 如果是已批准的案例，建立審查事件
+        if case_data.get("status") == CaseStatus.APPROVED.value:
+            submit_actor = case_data.get("submitActor", current_user.subject)
+            approve_actor = case_data.get("approveActor", "demo-pharmacist")
+            approve_date_offset = case_data.get("approveDateOffset", 0)
+            approve_date = now + timedelta(days=approve_date_offset)
+            
+            # 建立 SUBMIT 事件
+            submit_event = ReviewEvent(
+                id=str(uuid.uuid4()),
+                case_id=case_id,
+                event_type="SUBMIT",
+                actor_subject=submit_actor,
+                acting_role="NM_PHYSICIAN",
+                created_at=approve_date.isoformat(),
+            )
+            self.db.add(submit_event)
+            
+            # 建立 APPROVE 事件
+            approve_event = ReviewEvent(
+                id=str(uuid.uuid4()),
+                case_id=case_id,
+                event_type="APPROVE",
+                actor_subject=approve_actor,
+                acting_role="PHARMACIST",
+                created_at=approve_date.isoformat(),
+            )
+            self.db.add(approve_event)
 
 

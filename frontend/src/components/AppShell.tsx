@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   AppBar,
@@ -26,6 +26,7 @@ import {
   AccountCircle,
   SwapHoriz as SwitchIcon,
   Logout as LogoutIcon,
+  People as UsersIcon,
 } from '@mui/icons-material'
 import { useAuth, ActingRole } from '../contexts/AuthContext'
 
@@ -51,6 +52,21 @@ export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [roleMenuAnchor, setRoleMenuAnchor] = useState<null | HTMLElement>(null)
+  
+  // 確保從後端取得最新的模式設定
+  const [actualIsDemo, setActualIsDemo] = useState(isDemo)
+  
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const config = await fetch('/api/config').then(r => r.json())
+        setActualIsDemo(config.isDemo)
+      } catch {
+        setActualIsDemo(isDemo)
+      }
+    }
+    loadConfig()
+  }, [isDemo])
 
   const handleDrawerToggle = () => {
     setDrawerOpen(!drawerOpen)
@@ -108,6 +124,12 @@ export function AppShell() {
       path: '/analytics',
       roles: ['NM_PHYSICIAN', 'PHARMACIST', 'ADMIN'] as ActingRole[],
     },
+    {
+      text: '使用者管理',
+      icon: <UsersIcon />,
+      path: '/admin/users',
+      roles: ['ADMIN'] as ActingRole[],
+    },
   ]
 
   const drawer = (
@@ -164,7 +186,7 @@ export function AppShell() {
           </Typography>
 
           {/* Demo Mode Badge */}
-          {isDemo && (
+          {actualIsDemo && (
             <Chip
               label="DEMO MODE"
               size="small"

@@ -24,8 +24,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 複製應用程式程式碼
 COPY . .
 
-# 建立非 root 使用者
-RUN useradd --create-home --shell /bin/bash appuser && \
+# 建立資料目錄和非 root 使用者
+RUN mkdir -p /app/data && \
+    useradd --create-home --shell /bin/bash appuser && \
     chown -R appuser:appuser /app
 USER appuser
 

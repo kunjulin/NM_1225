@@ -35,10 +35,11 @@ import {
   CheckCircle as PassIcon,
   Info as InfoIcon,
   Send as SendIcon,
+  Sync as SyncIcon,
 } from '@mui/icons-material'
 import { apiClient } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
-import { WorklistResponse, WorklistItem, Severity, BulkSubmitResponse } from '../types'
+import { WorklistResponse, WorklistItem, Severity, BulkSubmitResponse, SyncWorklistResponse, SyncStatusResponse } from '../types'
 import { severityColors, statusColors } from '../theme'
 
 const severityIcons: Record<Severity, React.ReactNode> = {
@@ -60,13 +61,14 @@ export function NMWorklistPage() {
   const queryClient = useQueryClient()
   const { getAuthHeaders } = useAuth()
   const [tabValue, setTabValue] = useState(0)
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({
     open: false,
     message: '',
     severity: 'success',
   })
   const [bulkSubmitDialogOpen, setBulkSubmitDialogOpen] = useState(false)
   const [bulkSubmitResult, setBulkSubmitResult] = useState<BulkSubmitResponse | null>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
 
   const { data, isLoading, error, refetch } = useQuery<WorklistResponse>({
     queryKey: ['nm-worklist'],
@@ -85,6 +87,40 @@ export function NMWorklistPage() {
     refetchOnMount: 'always', // 每次進入頁面都重新獲取
     staleTime: 0, // 資料立即過期，確保每次都刷新
   })
+
+  // 同步狀態 Query
+  const { data: syncStatus, refetch: refetchSyncStatus } = useQuery<SyncStatusResponse>({
+    queryKey: ['sync-status'],
+    queryFn: async () => {
+      apiClient.setAuthHeaders(getAuthHeaders())
+      return apiClient.get<SyncStatusResponse>('/nm/sync-status')
+    },
+    refetchInterval: 10000, // 每 10 秒更新
+  })
+
+  // 手動同步 FHIR ServiceRequest
+  const handleSyncFromFHIR = async () => {
+    setIsSyncing(true)
+    try {
+      apiClient.setAuthHeaders(getAuthHeaders())
+      const result = await apiClient.post<SyncWorklistResponse>('/nm/sync-worklist', {})
+      setSnackbar({
+        open: true,
+        message: `同步完成：取得 ${result.fetched} 筆，新增 ${result.created} 筆，略過 ${result.skipped} 筆`,
+        severity: result.errors > 0 ? 'warning' : 'success',
+      })
+      refetch()
+      refetchSyncStatus()
+    } catch (err) {
+      setSnackbar({
+        open: true,
+        message: `同步失敗：${(err as Error).message}`,
+        severity: 'error',
+      })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   // 批次送審 Mutation
   const bulkSubmitMutation = useMutation({
@@ -162,14 +198,34 @@ export function NMWorklistPage() {
     return (
       <Box>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h5" fontWeight={600}>
-            核醫工作清單
-          </Typography>
-          <Tooltip title="重新整理">
-            <IconButton onClick={() => refetch()}>
-              <RefreshIcon />
-            </IconButton>
-          </Tooltip>
+          <Box display="flex" alignItems="center" gap={2}>
+            <Typography variant="h5" fontWeight={600}>
+              核醫工作清單
+            </Typography>
+            {syncStatus && (
+              <Typography variant="caption" color="text.secondary">
+                上次同步: {syncStatus.lastSyncTime ? new Date(syncStatus.lastSyncTime).toLocaleString('zh-TW') : '尚未同步'}
+              </Typography>
+            )}
+          </Box>
+          <Stack direction="row" spacing={1}>
+            <Tooltip title="從 FHIR Server 同步 ServiceRequest">
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={isSyncing ? <CircularProgress size={16} /> : <SyncIcon />}
+                onClick={handleSyncFromFHIR}
+                disabled={isSyncing}
+              >
+                {isSyncing ? '同步中...' : '同步 FHIR'}
+              </Button>
+            </Tooltip>
+            <Tooltip title="重新整理">
+              <IconButton onClick={() => refetch()}>
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
+          </Stack>
         </Box>
         <Card>
           <CardContent>
@@ -178,11 +234,22 @@ export function NMWorklistPage() {
                 目前沒有待處理的案件
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                請使用 Demo 功能建立示範資料
+                請點擊「同步 FHIR」從 FHIR Server 拉取 ServiceRequest，或使用測試資料功能建立示範資料
               </Typography>
             </Box>
           </CardContent>
         </Card>
+
+        {/* Snackbar */}
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={6000}
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+        >
+          <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
       </Box>
     )
   }
@@ -190,14 +257,35 @@ export function NMWorklistPage() {
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h5" fontWeight={600}>
-          核醫工作清單
-        </Typography>
-        <Tooltip title="重新整理">
-          <IconButton onClick={() => refetch()}>
-            <RefreshIcon />
-          </IconButton>
-        </Tooltip>
+        <Box display="flex" alignItems="center" gap={2}>
+          <Typography variant="h5" fontWeight={600}>
+            核醫工作清單
+          </Typography>
+          {syncStatus && (
+            <Typography variant="caption" color="text.secondary">
+              上次同步: {syncStatus.lastSyncTime ? new Date(syncStatus.lastSyncTime).toLocaleString('zh-TW') : '尚未同步'}
+              {syncStatus.nextSyncIn && ` | 下次同步: ${syncStatus.nextSyncIn}秒後`}
+            </Typography>
+          )}
+        </Box>
+        <Stack direction="row" spacing={1}>
+          <Tooltip title="從 FHIR Server 同步 ServiceRequest">
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={isSyncing ? <CircularProgress size={16} /> : <SyncIcon />}
+              onClick={handleSyncFromFHIR}
+              disabled={isSyncing}
+            >
+              {isSyncing ? '同步中...' : '同步 FHIR'}
+            </Button>
+          </Tooltip>
+          <Tooltip title="重新整理">
+            <IconButton onClick={() => refetch()}>
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+        </Stack>
       </Box>
 
       <Tabs
@@ -205,7 +293,7 @@ export function NMWorklistPage() {
         onChange={(_, v) => setTabValue(v)}
         sx={{ mb: 2 }}
       >
-        {groups.map((group, index) => (
+        {groups.map((group) => (
           <Tab
             key={group.groupKey}
             label={

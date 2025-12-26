@@ -106,12 +106,22 @@ class CaseService:
             try:
                 item = self._case_to_worklist_item(case)
                 
-                # CDS FAIL 分群邏輯調整：
-                # NM_DRAFTED 狀態但 CDS 評估為 FAIL 的案件，移至「待核醫處理」群組
-                # 這樣醫師必須先處理問題後才能在「已建立草案」Tab 批次送審
+                # 分群邏輯：
+                # 1. NM_PENDING + CDS PASS → 自動建立草案，移至「已建立草案」
+                # 2. NM_DRAFTED + CDS FAIL → 移至「待核醫處理」
+                # 3. 其他 → 按原狀態分群
                 target_group = case.status
                 
-                if case.status == CaseStatus.NM_DRAFTED.value:
+                if case.status == CaseStatus.NM_PENDING.value:
+                    if item.ruleEval.overallSeverity == Severity.PASS:
+                        # CDS PASS 的待處理案件，嘗試自動建立草案
+                        auto_drafted = await self._auto_create_draft(case)
+                        if auto_drafted:
+                            target_group = CaseStatus.NM_DRAFTED.value
+                            # 重新取得 item 以反映新狀態
+                            item = self._case_to_worklist_item(case)
+                
+                elif case.status == CaseStatus.NM_DRAFTED.value:
                     if item.ruleEval.overallSeverity == Severity.FAIL:
                         # CDS FAIL 的草案需要回到待處理狀態
                         target_group = CaseStatus.NM_PENDING.value
@@ -124,6 +134,9 @@ class CaseService:
                 logging.error(f"Error processing case {case.id}: {e}", exc_info=True)
                 # 跳過有問題的案件，繼續處理其他案件
                 continue
+        
+        # 提交自動建立的草案
+        await self.db.commit()
         
         return WorklistResponse(
             groups=[g for g in groups.values() if g.count > 0]
@@ -603,6 +616,68 @@ class CaseService:
             )
         
         return case
+    
+    async def _auto_create_draft(self, case: OrderCase) -> bool:
+        """自動建立草案
+        
+        若案件狀態為 NM_PENDING 且 CDS 評估為 PASS，
+        則自動根據 NA-2024 計算劑量並建立草案。
+        
+        Args:
+            case: OrderCase 物件
+            
+        Returns:
+            是否成功建立草案
+        """
+        try:
+            # 解析快照資料
+            snapshot_data = json.loads(case.snapshot_json or "{}")
+            local_facts = json.loads(case.local_facts_json or "{}")
+            
+            # 取得體重
+            weight_kg = local_facts.get("weightKg", {}).get("value") if isinstance(local_facts.get("weightKg"), dict) else None
+            if not weight_kg:
+                weight_kg = snapshot_data.get("weightKg")
+            
+            # 取得檢查代碼
+            exam_code = snapshot_data.get("examCode")
+            
+            if not exam_code or not weight_kg:
+                return False
+            
+            # 計算 NA-2024 建議劑量
+            dose_calc = self.rule_engine.calculate_na2024_dose(exam_code, weight_kg)
+            
+            if not dose_calc:
+                return False
+            
+            # 建立草案
+            draft_data = {
+                "examCode": exam_code,
+                "radiopharmaceuticalCode": exam_code,
+                "suggestedDose": {
+                    "value": dose_calc.suggested_dose,
+                    "unit": "MBq"
+                },
+                "override": {
+                    "isOverride": False
+                }
+            }
+            
+            now = datetime.now(timezone.utc).isoformat()
+            case.draft_json = json.dumps(draft_data, ensure_ascii=False)
+            case.status = CaseStatus.NM_DRAFTED.value
+            case.updated_at = now
+            
+            import logging
+            logging.info(f"Auto-created draft for case {case.id} (CDS PASS)")
+            
+            return True
+            
+        except Exception as e:
+            import logging
+            logging.error(f"Error auto-creating draft for case {case.id}: {e}")
+            return False
     
     def _case_to_worklist_item(self, case: OrderCase) -> WorklistItem:
         """轉換 OrderCase 為 WorklistItem"""

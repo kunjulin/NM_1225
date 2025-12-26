@@ -2,6 +2,7 @@
 NM SMART on FHIR Medication Stewardship - FastAPI 主程式
 核子醫學放射藥物用藥治理系統
 """
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,7 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import init_db
-from app.api import nm_router, pharmacy_router, cases_router, analytics_router, demo_router
+from app.api import nm_router, pharmacy_router, cases_router, analytics_router, demo_router, auth_router, admin_router
+from app.api.test_data import router as test_data_router
+from app.services.outbox_worker import start_outbox_worker, stop_outbox_worker, start_fhir_sync_worker, stop_fhir_sync_worker
 
 
 @asynccontextmanager
@@ -17,8 +20,23 @@ async def lifespan(app: FastAPI):
     """應用程式生命週期管理"""
     # 啟動時初始化資料庫
     await init_db()
+    
+    # 啟動背景 Worker
+    settings = get_settings()
+    
+    # 啟動 Outbox Worker（處理 MedicationRequest 上傳）
+    asyncio.create_task(start_outbox_worker())
+    
+    # 啟動 FHIR Sync Worker（同步 ServiceRequest）
+    if settings.fhir_server_type.value == "thas":
+        asyncio.create_task(start_fhir_sync_worker())
+    
     yield
-    # 關閉時清理資源（如需要）
+    
+    # 關閉時清理資源
+    await stop_outbox_worker()
+    if settings.fhir_server_type.value == "thas":
+        await stop_fhir_sync_worker()
 
 
 def create_app() -> FastAPI:
@@ -49,6 +67,9 @@ def create_app() -> FastAPI:
     app.include_router(pharmacy_router, prefix="/api/pharmacy", tags=["Pharmacy"])
     app.include_router(cases_router, prefix="/api/cases", tags=["Cases"])
     app.include_router(analytics_router, prefix="/api/analytics", tags=["Analytics"])
+    app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+    app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
+    app.include_router(test_data_router, prefix="/api/test-data", tags=["Test Data"])
     
     # Demo Mode 專用路由
     if settings.is_demo_mode:
@@ -84,5 +105,3 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
-
-

@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react'
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react'
+import { apiClient } from '../api/client'
 
 // 角色類型
 export type ActingRole = 'NM_PHYSICIAN' | 'PHARMACIST' | 'ADMIN'
@@ -24,7 +25,7 @@ const defaultState: AuthState = {
   subject: '',
   actingRole: 'NM_PHYSICIAN',
   isAuthenticated: false,
-  isDemo: true, // Demo Mode
+  isDemo: true, // 預設值，會從後端更新
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -43,6 +44,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     return defaultState
   })
+  
+  // 從後端取得實際的模式設定
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const config = await apiClient.get<{ isDemo: boolean }>('/config')
+        setState(prev => ({ ...prev, isDemo: config.isDemo }))
+      } catch (err) {
+        console.error('Failed to load app config:', err)
+        // 保持預設值
+      }
+    }
+    loadConfig()
+  }, [])
 
   const login = useCallback((subject: string, actingRole: ActingRole) => {
     const newState = {

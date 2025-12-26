@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -32,7 +32,6 @@ import {
   Snackbar,
   Tooltip,
   IconButton,
-  Collapse,
 } from '@mui/material'
 import {
   ArrowBack as BackIcon,
@@ -52,7 +51,6 @@ import {
   Person as PersonIcon,
   Reply as ReplyIcon,
   LocalPharmacy as PharmacyIcon,
-  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material'
 import { apiClient } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -63,7 +61,6 @@ import {
   ResponseAction,
   Severity,
   DraftData,
-  ReviewEvent,
 } from '../types'
 import { severityColors, statusColors } from '../theme'
 
@@ -71,7 +68,7 @@ export function CaseDetailPage() {
   const { caseId } = useParams<{ caseId: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { getAuthHeaders, actingRole, subject } = useAuth()
+  const { getAuthHeaders, actingRole } = useAuth()
   
   const [returnDialogOpen, setReturnDialogOpen] = useState(false)
   const [returnReasons, setReturnReasons] = useState<ReturnReasonCode[]>([])
@@ -424,7 +421,7 @@ export function CaseDetailPage() {
                     bgcolor: 'grey.300',
                   }
                 }}>
-                  {snapshot.reviewEvents.map((event, idx) => {
+                  {snapshot.reviewEvents.map((event) => {
                     const isReturn = event.eventType === 'RETURN'
                     const isResponse = event.eventType === 'RESPONSE'
                     const isSubmit = event.eventType === 'SUBMIT'

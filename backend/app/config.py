@@ -54,6 +54,17 @@ class Settings(BaseSettings):
     # CORS 設定 (for frontend)
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
     
+    # SMART on FHIR OAuth2 設定
+    smart_client_id: str = ""
+    smart_client_secret: str = ""  # 可選，視 THAS 要求
+    smart_redirect_uri: str = "http://localhost:5173/auth/callback"
+    smart_authorization_endpoint: str = ""  # 從 THAS /.well-known/smart-configuration 取得
+    smart_token_endpoint: str = ""
+    
+    # ServiceRequest 同步設定
+    fhir_service_request_category: str = "nuclear-medicine"  # 核醫 ServiceRequest 過濾條件
+    fhir_sync_poll_interval_seconds: float = 60.0  # 背景同步間隔
+    
     @property
     def fhir_base_url(self) -> str:
         """取得目前使用的 FHIR Server Base URL"""

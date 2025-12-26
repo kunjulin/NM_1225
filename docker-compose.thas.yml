@@ -2,7 +2,8 @@
 # 核醫藥物管理系統 - 連接臺灣50 SMART on FHIR 測試平台
 #
 # 使用方式:
-#   啟動: docker-compose -f docker-compose.thas.yml up -d
+#   Demo Mode:       docker-compose -f docker-compose.thas.yml up -d
+#   Production Mode: docker-compose -f docker-compose.thas.yml --profile production up -d
 #   停止: docker-compose -f docker-compose.thas.yml down
 #   查看日誌: docker-compose -f docker-compose.thas.yml logs -f
 #
@@ -13,6 +14,13 @@
 # THAS 競賽平台:
 #   - ISS Server URL: https://thas.mohw.gov.tw/v/r4/sim/WzIsIiIsIiIsIkFVVE8iLDAsMCwwLCIiLCIiLCIiLCIiLCIiLCIiLCIiLDAsMSwiIl0/fhir
 #   - 測試類型: Provider Standalone Launch Test
+#
+# SMART on FHIR 設定:
+#   若要啟用 SMART 登入，需設定以下環境變數:
+#   - NM_SMART_CLIENT_ID: THAS 發放的 Client ID
+#   - NM_SMART_AUTHORIZATION_ENDPOINT: THAS 授權端點
+#   - NM_SMART_TOKEN_ENDPOINT: THAS Token 端點
+#   - NM_SMART_REDIRECT_URI: 回呼 URL (預設 http://localhost:5173/auth/callback)
 
 services:
   # Backend - FastAPI 後端服務
@@ -24,18 +32,41 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - NM_APP_MODE=demo
+      # 應用程式模式: demo 或 production
+      # Demo Mode: 允許角色切換、快速登入
+      # Production Mode: 需要真實認證、角色由管理員指派
+      # - NM_APP_MODE=${NM_APP_MODE:-demo}
+      - NM_APP_MODE=production
       - NM_DEBUG=false
+      
+      # FHIR Server 設定
       - NM_FHIR_SERVER_TYPE=thas
       - NM_FHIR_THAS_BASE_URL=https://thas.mohw.gov.tw/v/r4/sim/WzIsIiIsIiIsIkFVVE8iLDAsMCwwLCIiLCIiLCIiLCIiLCIiLCIiLCIiLDAsMSwiIl0/fhir
-      - NM_DATABASE_URL=sqlite:///./nm_stewardship.db
-      - NM_CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://frontend:80"]
       - NM_FHIR_TIMEOUT_SECONDS=30.0
+      
+      # ServiceRequest 同步設定
+      - NM_FHIR_SERVICE_REQUEST_CATEGORY=nuclear-medicine
+      - NM_FHIR_SYNC_POLL_INTERVAL_SECONDS=60.0
+      
+      # 資料庫 (存放在 /app/data 目錄以便持久化)
+      - NM_DATABASE_URL=sqlite:///./data/nm_stewardship.db
+      
+      # CORS
+      - NM_CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://frontend:80"]
+      
+      # SMART on FHIR OAuth2 設定 (Production Mode 需要)
+      # 請從 THAS 取得並設定這些值
+      - NM_SMART_CLIENT_ID=${NM_SMART_CLIENT_ID:-}
+      - NM_SMART_CLIENT_SECRET=${NM_SMART_CLIENT_SECRET:-}
+      - NM_SMART_REDIRECT_URI=${NM_SMART_REDIRECT_URI:-http://localhost:5173/auth/callback}
+      - NM_SMART_AUTHORIZATION_ENDPOINT=${NM_SMART_AUTHORIZATION_ENDPOINT:-}
+      - NM_SMART_TOKEN_ENDPOINT=${NM_SMART_TOKEN_ENDPOINT:-}
     volumes:
-      - backend-data:/app
+      # 只持久化資料庫檔案，不覆蓋程式碼
+      - backend-db:/app/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/demo/whoami')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -55,7 +86,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  backend-data:
-    name: nm-stewardship-backend-data-thas
-
+  backend-db:
+    name: nm-stewardship-backend-db-thas
 

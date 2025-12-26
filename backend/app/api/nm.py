@@ -4,8 +4,9 @@ NM Physician API 路由
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.schemas import (
@@ -19,9 +20,30 @@ from app.schemas import (
     BulkSubmitResponse,
 )
 from app.services.case_service import CaseService
+from app.services.fhir_sync_service import FHIRSyncService
 from app.services.auth_service import get_current_user, CurrentUser
+from app.services.outbox_worker import get_sync_status
 
 router = APIRouter()
+
+
+# === Sync Schemas ===
+
+class SyncWorklistResponse(BaseModel):
+    """同步工作清單回應"""
+    fetched: int
+    created: int
+    skipped: int
+    errors: int
+    error_details: list[str] = []
+
+
+class SyncStatusResponse(BaseModel):
+    """同步狀態回應"""
+    lastSyncTime: Optional[str] = None
+    nextSyncIn: Optional[int] = None
+    isWorkerRunning: bool = False
+    syncIntervalSeconds: float = 60.0
 
 
 @router.get("/worklist", response_model=WorklistResponse)
@@ -111,5 +133,60 @@ async def bulk_submit(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"批次送審時發生系統錯誤: {str(e)}"
+        )
+
+
+@router.get("/sync-status", response_model=SyncStatusResponse)
+async def get_sync_status_api(
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """取得 FHIR 同步狀態
+    
+    Returns:
+        同步狀態資訊（最後同步時間、下次同步倒數、Worker 狀態等）
+    """
+    status = get_sync_status()
+    return SyncStatusResponse(
+        lastSyncTime=status.get("last_sync_time"),
+        nextSyncIn=status.get("next_sync_in"),
+        isWorkerRunning=status.get("is_running", False),
+        syncIntervalSeconds=status.get("sync_interval_seconds", 60.0),
+    )
+
+
+@router.post("/sync-worklist", response_model=SyncWorklistResponse)
+async def sync_worklist_from_fhir(
+    last_updated: Optional[str] = Query(None, description="只同步此時間之後更新的 ServiceRequest"),
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """從 FHIR Server 同步 ServiceRequest 到工作清單
+    
+    手動觸發從 THAS/FHIR Server 拉取核醫相關的 ServiceRequest，
+    並建立對應的 OrderCase 到本地工作清單。
+    
+    Args:
+        last_updated: 可選，只同步指定時間之後更新的資料
+        
+    Returns:
+        同步統計結果
+    """
+    try:
+        sync_service = FHIRSyncService(db)
+        result = await sync_service.sync_service_requests(last_updated=last_updated)
+        
+        return SyncWorklistResponse(
+            fetched=result["fetched"],
+            created=result["created"],
+            skipped=result["skipped"],
+            errors=result["errors"],
+            error_details=result.get("error_details", []),
+        )
+    except Exception as e:
+        import logging
+        logging.error(f"Error syncing worklist: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"同步工作清單時發生錯誤: {str(e)}"
         )
 

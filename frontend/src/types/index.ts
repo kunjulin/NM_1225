@@ -290,3 +290,103 @@ export interface WhoAmI {
   isDemo: boolean
 }
 
+// === Auth ===
+
+export type UserStatus = 'PENDING' | 'ACTIVE' | 'INACTIVE'
+
+export interface AuthConfig {
+  is_demo_mode: boolean
+  smart_enabled: boolean
+  authorization_endpoint?: string
+  client_id?: string
+  redirect_uri?: string
+}
+
+export interface SMARTLaunchResponse {
+  authorization_url: string
+  state: string
+}
+
+export interface AuthResultResponse {
+  success: boolean
+  subject?: string
+  display_name?: string
+  practitioner_ref?: string
+  status?: UserStatus
+  allowed_roles: string[]
+  is_new_user: boolean
+  error?: string
+}
+
+export interface UserInfo {
+  subject: string
+  display_name: string
+  practitioner_ref?: string
+  email?: string
+  status: UserStatus
+  allowed_roles: string[]
+  is_admin: boolean
+}
+
+// === Admin ===
+
+export interface UserListItem {
+  id: string
+  subject: string
+  display_name: string
+  practitioner_ref?: string
+  email?: string
+  status: UserStatus
+  allowed_roles: string[]
+  is_admin: boolean
+  last_login_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface UserListResponse {
+  users: UserListItem[]
+  total: number
+  pending_count: number
+}
+
+// === Sync Log ===
+
+export interface SyncLogItem {
+  id: string
+  case_id: string
+  patient_name?: string
+  patient_id?: string
+  operation: string
+  status: string
+  medication_request_ref?: string
+  last_error?: string
+  retry_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SyncLogResponse {
+  logs: SyncLogItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+// === FHIR Sync ===
+
+export interface SyncWorklistResponse {
+  fetched: number
+  created: number
+  skipped: number
+  errors: number
+  error_details: string[]
+}
+
+export interface SyncStatusResponse {
+  lastSyncTime: string | null
+  nextSyncIn: number | null
+  isWorkerRunning: boolean
+  syncIntervalSeconds: number
+}
+

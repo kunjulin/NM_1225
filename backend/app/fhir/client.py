@@ -4,11 +4,14 @@ FHIR Client
 支援 Local HAPI FHIR 與 THAS 競賽環境切換
 """
 import json
+import logging
 from typing import Any, Optional
 
 import httpx
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class FHIRClient:
@@ -57,14 +60,21 @@ class FHIRClient:
                 elif response.status_code == 404:
                     return None
                 else:
-                    # 記錄錯誤但不拋出，graceful fallback
+                    # 記錄詳細錯誤
+                    error_text = response.text[:500] if response.text else "No error message"
+                    logger.error(
+                        f"FHIR request failed: {method} {url} - "
+                        f"Status: {response.status_code}, Response: {error_text}"
+                    )
                     return None
                     
-            except httpx.TimeoutException:
-                # Timeout: 返回 None，讓呼叫端使用快取
+            except httpx.TimeoutException as e:
+                # Timeout: 記錄並返回 None
+                logger.error(f"FHIR request timeout: {method} {url} - {str(e)}")
                 return None
-            except httpx.RequestError:
-                # 連線錯誤: 返回 None
+            except httpx.RequestError as e:
+                # 連線錯誤: 記錄並返回 None
+                logger.error(f"FHIR request error: {method} {url} - {str(e)}")
                 return None
     
     # === Patient ===

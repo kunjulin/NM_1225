@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import {
   Box,
   Card,
@@ -12,10 +13,11 @@ import {
   Stack,
   Button,
   Paper,
+  Snackbar,
 } from '@mui/material'
 import {
   Download as DownloadIcon,
-  DateRange as DateIcon,
+  CloudUpload as SyncLogIcon,
 } from '@mui/icons-material'
 import {
   BarChart,
@@ -24,20 +26,20 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
 } from 'recharts'
-import { apiClient } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { AnalyticsSummary, AutofillSummary } from '../types'
+import { apiClient } from '../api/client'
 
 const COLORS = ['#0D47A1', '#00ACC1', '#ED6C02', '#D32F2F', '#2E7D32']
 
 export function AnalyticsPage() {
   const { getAuthHeaders } = useAuth()
+  const navigate = useNavigate()
   
   // 預設最近 30 天
   const today = new Date()
@@ -45,6 +47,12 @@ export function AnalyticsPage() {
   
   const [fromDate, setFromDate] = useState(thirtyDaysAgo.toISOString().split('T')[0])
   const [toDate, setToDate] = useState(today.toISOString().split('T')[0])
+  const [downloading, setDownloading] = useState(false)
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+    open: false,
+    message: '',
+    severity: 'success',
+  })
 
   const { data: summary, isLoading: summaryLoading, error: summaryError } = useQuery<AnalyticsSummary>({
     queryKey: ['analytics-summary', fromDate, toDate],
@@ -98,6 +106,41 @@ export function AnalyticsPage() {
     value: r.count,
   })) || []
 
+  const handleExportCSV = async () => {
+    setDownloading(true)
+    try {
+      const headers = getAuthHeaders()
+      const response = await fetch(
+        `/api/analytics/export/csv?from=${fromDate}&to=${toDate}`,
+        { headers }
+      )
+      
+      if (!response.ok) {
+        throw new Error('下載失敗')
+      }
+      
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `medication_orders_${fromDate}_${toDate}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      
+      setSnackbar({ open: true, message: 'CSV 匯出成功', severity: 'success' })
+    } catch (err) {
+      setSnackbar({ 
+        open: true, 
+        message: err instanceof Error ? err.message : '匯出失敗', 
+        severity: 'error' 
+      })
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
@@ -121,8 +164,20 @@ export function AnalyticsPage() {
             onChange={(e) => setToDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
           />
-          <Button variant="outlined" startIcon={<DownloadIcon />}>
-            匯出 CSV
+          <Button 
+            variant="outlined" 
+            startIcon={downloading ? <CircularProgress size={20} /> : <DownloadIcon />}
+            onClick={handleExportCSV}
+            disabled={downloading}
+          >
+            {downloading ? '匯出中...' : '匯出 CSV'}
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<SyncLogIcon />}
+            onClick={() => navigate('/analytics/sync-logs')}
+          >
+            上傳記錄
           </Button>
         </Stack>
       </Box>
@@ -277,6 +332,13 @@ export function AnalyticsPage() {
           </Card>
         </Grid>
       </Grid>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        message={snackbar.message}
+      />
     </Box>
   )
 }
