@@ -345,4 +345,14 @@ class RuleEngine:
         if exam_code:
             return self.calculate_na2024_dose(exam_code, weight)
         
-        return None
+        # 即使沒有檢查代碼，也返回一個提示性的結果，讓前端可以顯示提示訊息
+        # 這樣可以確保所有病人都能看到 NA-2024 劑量計算參考 panel
+        return DoseCalculationResult(
+            suggested_dose=0.0,
+            min_dose=0.0,
+            max_dose=0.0,
+            formula="請先指定檢查項目以計算建議劑量",
+            reference="NA-2024",
+            weight_used=weight,
+            is_pediatric=False
+        )

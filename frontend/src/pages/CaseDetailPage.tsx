@@ -43,7 +43,6 @@ import {
   Warning as WarningIcon,
   Error as ErrorIcon,
   Info as InfoIcon,
-  AutoAwesome as AutofillIcon,
   CheckCircleOutline as PassIcon,
   Science as DoseIcon,
   Save as SaveIcon,
@@ -74,7 +73,6 @@ import { apiClient } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import {
   PatientSnapshot,
-  CandidateFact,
   ReturnReasonCode,
   ResponseAction,
   Severity,
@@ -119,16 +117,26 @@ export function CaseDetailPage() {
   const [overrideReason, setOverrideReason] = useState('')
 
   // 取得案件快照
+  const [forceRefresh, setForceRefresh] = useState(false)
   const { data: snapshot, isLoading, error, refetch } = useQuery<PatientSnapshot>({
-    queryKey: ['case-snapshot', caseId],
+    queryKey: ['case-snapshot', caseId, forceRefresh],
     queryFn: async () => {
       apiClient.setAuthHeaders(getAuthHeaders())
-      return apiClient.get<PatientSnapshot>(`/cases/${caseId}/snapshot`)
+      const refreshParam = forceRefresh ? '?refresh=true' : ''
+      return apiClient.get<PatientSnapshot>(`/cases/${caseId}/snapshot${refreshParam}`)
     },
     enabled: !!caseId,
     refetchOnMount: 'always', // 每次進入頁面都重新獲取
     staleTime: 0, // 資料立即過期，確保每次都刷新
   })
+  
+  // 處理手動刷新（從 FHIR Server 重新取得資料）
+  const handleRefresh = () => {
+    setForceRefresh(prev => !prev) // 切換狀態以觸發重新查詢
+    setTimeout(() => {
+      refetch() // 立即觸發查詢
+    }, 100)
+  }
 
   // 初始化 Override 理由（從 draft 中載入）
   useEffect(() => {
@@ -231,32 +239,6 @@ export function CaseDetailPage() {
     },
   })
 
-  // Accept Autofill
-  const acceptAutofillMutation = useMutation({
-    mutationFn: async (facts: CandidateFact[]) => {
-      apiClient.setAuthHeaders(getAuthHeaders())
-      return apiClient.post(`/cases/${caseId}/autofill/accept`, {
-        caseId,
-        facts: facts.map(f => ({
-          factType: f.factType,
-          value: f.value,
-          unit: f.unit,
-          asOf: f.asOf,
-          sourceType: f.sourceType,
-          sourceRef: f.sourceRef,
-          confidence: f.confidence,
-          extractionMethod: f.extractionMethod,
-        })),
-      })
-    },
-    onSuccess: () => {
-      setSnackbar({ open: true, message: '自動填入已接受', severity: 'success' })
-      queryClient.invalidateQueries({ queryKey: ['case-snapshot', caseId] })
-    },
-    onError: (error) => {
-      setSnackbar({ open: true, message: `自動填入失敗: ${(error as Error).message}`, severity: 'error' })
-    },
-  })
 
   // Save Draft (劑量更新)
   const saveDraftMutation = useMutation({
@@ -382,8 +364,8 @@ export function CaseDetailPage() {
           <Chip label={caseId?.slice(0, 8)} size="small" />
         </Stack>
         <Stack direction="row" spacing={1}>
-          <Tooltip title="重新整理">
-            <IconButton onClick={() => refetch()}>
+          <Tooltip title="重新整理（從 FHIR Server 重新取得臨床資料）">
+            <IconButton onClick={handleRefresh} disabled={isLoading}>
               <RefreshIcon />
             </IconButton>
           </Tooltip>
@@ -853,12 +835,9 @@ export function CaseDetailPage() {
                   {(() => {
                     const hasMissingWeight = snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT')
                     const currentWeight = snapshot.doseCalculation?.weightUsed || snapshot.snapshot.weightKg
-                    const hasLocalWeight = snapshot.candidateFacts.some(
-                      f => f.factType === 'WEIGHT_KG' && (f.sourceType === 'MANUAL' || f.sourceType === 'AUTOFILL')
-                    )
                     // 如果缺少體重，或狀態為 NM_PENDING（待核醫處理），都顯示輸入欄位
                     // 這樣即使沒有體重資料，核醫醫師也可以手動輸入
-                    const shouldShowWeightInput = hasMissingWeight || snapshot.status === 'NM_PENDING' || hasLocalWeight || currentWeight
+                    const shouldShowWeightInput = hasMissingWeight || snapshot.status === 'NM_PENDING' || currentWeight
                     
                     if (!shouldShowWeightInput) return null
                     
@@ -1007,142 +986,123 @@ export function CaseDetailPage() {
                   </Grid>
                   
                   {/* NA-2024 劑量計算參考 */}
-                  {/* 只要有檢查代碼，就應該顯示劑量計算 panel（即使沒有體重也會顯示範圍資訊） */}
-                  {(() => {
-                    const hasExamCode = snapshot.snapshot.examCode || snapshot.draft?.examCode
-                    const hasMissingWeight = snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT')
-                    
-                    // 如果有檢查代碼，應該顯示劑量計算 panel
-                    // 即使沒有體重，後端也會返回範圍資訊
-                    if (!hasExamCode && !snapshot.doseCalculation) return null
-                    
-                    // 如果沒有 doseCalculation 但有檢查代碼，可能是後端還沒計算
-                    // 這種情況下不顯示，等待後端提供資料
-                    if (!snapshot.doseCalculation) return null
-                    
-                    return (
-                      <Grid item xs={12}>
-                        <Paper 
-                          variant="outlined" 
-                          sx={{ 
-                            p: 2, 
-                            bgcolor: hasMissingWeight ? 'warning.light' : 'primary.light',
-                            borderColor: hasMissingWeight ? 'warning.main' : 'primary.main',
-                          }}
-                        >
-                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                            <Box>
-                              <Typography variant="body2" color={hasMissingWeight ? 'warning.dark' : 'primary.dark'} fontWeight={600} gutterBottom>
-                                NA-2024 劑量計算參考
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {snapshot.doseCalculation.formula}
-                              </Typography>
-                              {hasMissingWeight && (
-                                <Alert severity="warning" sx={{ mt: 1, mb: 1 }}>
-                                  目前沒有體重資料，顯示的是劑量範圍。請輸入體重後，系統會自動計算個人化劑量。
-                                </Alert>
+                  {/* 每個病人都應該顯示這個 panel */}
+                  {snapshot.doseCalculation && (
+                    <Grid item xs={12}>
+                      <Paper 
+                        variant="outlined" 
+                        sx={{ 
+                          p: 2, 
+                          bgcolor: snapshot.doseCalculation.suggestedDose === 0 
+                            ? 'info.light' 
+                            : (snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT') 
+                                ? 'warning.light' 
+                                : 'primary.light'),
+                          borderColor: snapshot.doseCalculation.suggestedDose === 0 
+                            ? 'info.main' 
+                            : (snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT') 
+                                ? 'warning.main' 
+                                : 'primary.main'),
+                        }}
+                      >
+                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                          <Box>
+                            <Typography 
+                              variant="body2" 
+                              color={
+                                snapshot.doseCalculation.suggestedDose === 0 
+                                  ? 'info.dark' 
+                                  : (snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT') 
+                                      ? 'warning.dark' 
+                                      : 'primary.dark')
+                              } 
+                              fontWeight={600} 
+                              gutterBottom
+                            >
+                              NA-2024 劑量計算參考
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {snapshot.doseCalculation.formula}
+                            </Typography>
+                            {snapshot.doseCalculation.suggestedDose === 0 && (
+                              <Alert severity="info" sx={{ mt: 1, mb: 1 }}>
+                                請先指定檢查項目，系統將根據 NA-2024 指引計算建議劑量。
+                              </Alert>
+                            )}
+                            {snapshot.doseCalculation.suggestedDose !== 0 && snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT') && (
+                              <Alert severity="warning" sx={{ mt: 1, mb: 1 }}>
+                                目前沒有體重資料，顯示的是劑量範圍。請輸入體重後，系統會自動計算個人化劑量。
+                              </Alert>
+                            )}
+                            <Box mt={1}>
+                              {snapshot.doseCalculation.isPediatric && (
+                                <Chip 
+                                  label="兒童劑量" 
+                                  size="small" 
+                                  color="secondary"
+                                  sx={{ mr: 1 }}
+                                />
                               )}
-                              <Box mt={1}>
-                                {snapshot.doseCalculation.isPediatric && (
-                                  <Chip 
-                                    label="兒童劑量" 
-                                    size="small" 
-                                    color="secondary"
-                                    sx={{ mr: 1 }}
-                                  />
-                                )}
-                                {snapshot.doseCalculation.weightUsed ? (
-                                  <Chip 
-                                    label={`體重: ${snapshot.doseCalculation.weightUsed} kg`} 
-                                    size="small" 
-                                    variant="outlined"
-                                  />
-                                ) : (
-                                  <Chip 
-                                    label="未提供體重" 
-                                    size="small" 
-                                    color="warning"
-                                    variant="outlined"
-                                  />
-                                )}
-                              </Box>
+                              {snapshot.doseCalculation.weightUsed ? (
+                                <Chip 
+                                  label={`體重: ${snapshot.doseCalculation.weightUsed} kg`} 
+                                  size="small" 
+                                  variant="outlined"
+                                />
+                              ) : (
+                                <Chip 
+                                  label="未提供體重" 
+                                  size="small" 
+                                  color="warning"
+                                  variant="outlined"
+                                />
+                              )}
                             </Box>
+                          </Box>
+                          {snapshot.doseCalculation.suggestedDose > 0 && (
                             <Box textAlign="right">
-                              <Typography variant="h5" color={hasMissingWeight ? 'warning.dark' : 'primary.dark'}>
+                              <Typography 
+                                variant="h5" 
+                                color={
+                                  snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT') 
+                                    ? 'warning.dark' 
+                                    : 'primary.dark'
+                                }
+                              >
                                 {snapshot.doseCalculation.suggestedDose} MBq
                               </Typography>
                               <Typography variant="caption" color="text.secondary">
                                 範圍: {snapshot.doseCalculation.minDose} - {snapshot.doseCalculation.maxDose} MBq
                               </Typography>
                             </Box>
-                          </Stack>
-                          <Divider sx={{ my: 1.5 }} />
-                          <Button
-                            variant="contained"
-                            size="small"
-                            color={hasMissingWeight ? 'warning' : 'primary'}
-                            onClick={() => {
-                              saveDraftMutation.mutate({ doseValue: snapshot.doseCalculation!.suggestedDose })
-                            }}
-                            disabled={saveDraftMutation.isPending}
-                          >
-                            {hasMissingWeight ? '採用範圍最小劑量' : '採用建議劑量'}
-                          </Button>
-                        </Paper>
-                      </Grid>
-                    )
-                  })()}
+                          )}
+                        </Stack>
+                        {snapshot.doseCalculation.suggestedDose > 0 && (
+                          <>
+                            <Divider sx={{ my: 1.5 }} />
+                            <Button
+                              variant="contained"
+                              size="small"
+                              color={snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT') ? 'warning' : 'primary'}
+                              onClick={() => {
+                                saveDraftMutation.mutate({ doseValue: snapshot.doseCalculation!.suggestedDose })
+                              }}
+                              disabled={saveDraftMutation.isPending}
+                            >
+                              {snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT') 
+                                ? '採用範圍最小劑量' 
+                                : '採用建議劑量'}
+                            </Button>
+                          </>
+                        )}
+                      </Paper>
+                    </Grid>
+                  )}
                 </Grid>
               </CardContent>
             </Card>
           )}
 
-          {/* Candidate Facts (Autofill) */}
-          {snapshot.candidateFacts.length > 0 && (
-            <Card sx={{ mb: 3 }}>
-              <CardContent>
-                <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <AutofillIcon color="secondary" />
-                    <Typography variant="h6">自動填入候選值</Typography>
-                  </Stack>
-                  <Button
-                    variant="contained"
-                    color="secondary"
-                    size="small"
-                    onClick={() => acceptAutofillMutation.mutate(snapshot.candidateFacts)}
-                    disabled={acceptAutofillMutation.isPending}
-                  >
-                    全部接受
-                  </Button>
-                </Box>
-                <List dense>
-                  {snapshot.candidateFacts.map((fact, i) => (
-                    <ListItem key={i}>
-                      <ListItemIcon>
-                        <Chip
-                          label={fact.confidence}
-                          size="small"
-                          color={
-                            fact.confidence === 'HIGH'
-                              ? 'success'
-                              : fact.confidence === 'MEDIUM'
-                              ? 'warning'
-                              : 'default'
-                          }
-                        />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={`${fact.factType}: ${fact.value} ${fact.unit || ''}`}
-                        secondary={`來源: ${fact.sourceType} | ${new Date(fact.asOf).toLocaleDateString()}`}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              </CardContent>
-            </Card>
-          )}
 
           {/* 快照資料 */}
           <Card>
@@ -1414,12 +1374,20 @@ function ClinicalDataPanel({ snapshot }: ClinicalDataPanelProps) {
   const hasClinicalData = hasEncounters || hasConditions || hasMedications || hasProcedures || hasLabResults || hasAllergies
   
   // Debug: 顯示資料狀態（開發時可用）
-  // console.log('ClinicalDataPanel Debug:', {
-  //   hasEncounters, hasConditions, hasMedications, hasProcedures, hasLabResults, hasAllergies,
-  //   encounters: encounters.length, conditionList: conditionList.length,
-  //   medications: medications.length, procedures: procedures.length,
-  //   labResults: labResults ? 'exists' : 'null', allergyList: allergyList.length
-  // })
+  console.log('ClinicalDataPanel Debug:', {
+    hasEncounters, hasConditions, hasMedications, hasProcedures, hasLabResults, hasAllergies,
+    encounters: encounters.length, conditionList: conditionList.length,
+    medications: medications.length, procedures: procedures.length,
+    labResults: labResults ? {
+      renal: labResults.renal.length,
+      hepatic: labResults.hepatic.length,
+      thyroid: labResults.thyroid.length,
+      hematology: labResults.hematology.length,
+      other: labResults.other.length
+    } : 'null',
+    allergyList: allergyList.length,
+    snapshot: snapshot.snapshot
+  })
   
   if (!hasClinicalData) {
     // 即使沒有資料，也顯示一個提示訊息，方便調試

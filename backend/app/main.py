@@ -12,7 +12,11 @@ from app.config import get_settings
 from app.database import init_db
 from app.api import nm_router, pharmacy_router, cases_router, analytics_router, demo_router, auth_router, admin_router
 from app.api.test_data import router as test_data_router
-from app.services.outbox_worker import start_outbox_worker, stop_outbox_worker, start_fhir_sync_worker, stop_fhir_sync_worker
+from app.services.outbox_worker import (
+    start_outbox_worker, stop_outbox_worker, 
+    start_fhir_sync_worker, stop_fhir_sync_worker,
+    start_clinical_data_sync_worker, stop_clinical_data_sync_worker
+)
 
 
 @asynccontextmanager
@@ -31,12 +35,16 @@ async def lifespan(app: FastAPI):
     if settings.fhir_server_type.value == "thas":
         asyncio.create_task(start_fhir_sync_worker())
     
+    # 啟動臨床資料同步 Worker（非同步拉取臨床資料）
+    asyncio.create_task(start_clinical_data_sync_worker())
+    
     yield
     
     # 關閉時清理資源
     await stop_outbox_worker()
     if settings.fhir_server_type.value == "thas":
         await stop_fhir_sync_worker()
+    await stop_clinical_data_sync_worker()
 
 
 def create_app() -> FastAPI:

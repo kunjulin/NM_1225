@@ -5,7 +5,7 @@
 exams:
   BONE_SCAN:
     name: 骨骼掃描
-    radiopharmaceutical: local-tc99m-mdp
+    radiopharmaceutical: Tc-99m-MDP
     dose_range: [555, 925]  # MBq (成人範圍)
     required_facts:
       - weight
@@ -19,7 +19,7 @@ exams:
   
   MAG3:
     name: 腎功能掃描
-    radiopharmaceutical: local-tc99m-mag3
+    radiopharmaceutical: Tc-99m-MAG3
     dose_range: [37, 148]  # MBq
     required_facts:
       - weight
@@ -34,7 +34,7 @@ exams:
   
   DMSA:
     name: 腎臟皮質掃描
-    radiopharmaceutical: local-tc99m-dmsa
+    radiopharmaceutical: Tc-99m-DMSA
     dose_range: [18.5, 100]  # MBq
     required_facts:
       - weight
@@ -48,7 +48,7 @@ exams:
   
   MIBG:
     name: MIBG 掃描
-    radiopharmaceutical: local-i123-mibg
+    radiopharmaceutical: I-123-MIBG
     dose_range: [37, 370]  # MBq
     required_facts:
       - weight
@@ -61,8 +61,8 @@ exams:
       max_activity: 370          # MBq (10.0 mCi)
   
   FDG_PET:
-    name: 正子造影
-    radiopharmaceutical: local-f18-fdg
+    name: 葡萄糖正子造影
+    radiopharmaceutical: F18-FDG
     dose_range: [26, 370]  # MBq
     required_facts:
       - weight
@@ -81,7 +81,7 @@ exams:
   
   DTPA:
     name: 腎絲球過濾率掃描
-    radiopharmaceutical: local-tc99m-dtpa
+    radiopharmaceutical: Tc-99m-DTPA
     dose_range: [185, 370]  # MBq (成人)
     required_facts:
       - weight
@@ -96,7 +96,7 @@ exams:
 
   NaF_PET:
     name: 氟化鈉正子造影
-    radiopharmaceutical: local-f18-naf
+    radiopharmaceutical: F18-NaF
     dose_range: [18.5, 148]  # MBq
     required_facts:
       - weight
@@ -110,7 +110,7 @@ exams:
 
   DOTATATE:
     name: DOTATATE PET
-    radiopharmaceutical: local-ga68-dotatate
+    radiopharmaceutical: Ga-68-DOTATATE
     dose_range: [14, 200]  # MBq
     required_facts:
       - weight

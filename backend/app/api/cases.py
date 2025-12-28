@@ -74,3 +74,34 @@ async def save_manual_fact(
     service = SnapshotService(db)
     return await service.save_manual_fact(case_id, request, current_user)
 
+
+@router.post("/{case_id}/refresh-clinical-data")
+async def refresh_clinical_data(
+    case_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """手動觸發臨床資料重新整理
+    
+    從 FHIR Server 重新拉取完整的臨床資料（Encounters, Conditions, Medications, Procedures, Lab Results, Allergies）
+    並更新案件快照
+    """
+    from fastapi import HTTPException, status
+    
+    service = SnapshotService(db)
+    try:
+        # 使用 refresh=True 來觸發重新整理
+        result = await service.get_snapshot(case_id, refresh=True)
+        return {
+            "success": True,
+            "message": "臨床資料已重新整理",
+            "caseId": case_id
+        }
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to refresh clinical data for case {case_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"重新整理臨床資料失敗: {str(e)}"
+        )
+

@@ -651,10 +651,22 @@ class CaseService:
             if not dose_calc:
                 return False
             
+            # 取得對應的放射性藥物代碼
+            radiopharmaceutical_code = self.rule_engine.config.get_radiopharmaceutical(exam_code)
+            if not radiopharmaceutical_code:
+                # 如果沒有配置，使用檢查代碼作為後備
+                radiopharmaceutical_code = exam_code
+                import logging
+                logging.warning(f"No radiopharmaceutical config for {exam_code}, using exam_code as fallback")
+            
+            # 取得檢查配置以獲取顯示名稱
+            exam_config = self.rule_engine.config.get_exam_config(exam_code) or {}
+            
             # 建立草案
             draft_data = {
                 "examCode": exam_code,
-                "radiopharmaceuticalCode": exam_code,
+                "radiopharmaceuticalCode": radiopharmaceutical_code,
+                "radiopharmaceuticalDisplay": exam_config.get("name", ""),
                 "suggestedDose": {
                     "value": dose_calc.suggested_dose,
                     "unit": "MBq"

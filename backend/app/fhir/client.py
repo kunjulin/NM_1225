@@ -418,6 +418,83 @@ class FHIRClient:
         """建立 MedicationRequest（最終核准時）"""
         return await self._request("POST", "MedicationRequest", data=data)
     
+    async def create_medication_request_with_error(self, data: dict) -> tuple[Optional[dict], Optional[str]]:
+        """建立 MedicationRequest 並返回結果和錯誤訊息
+        
+        Returns:
+            (result, error_message) tuple
+        """
+        url = f"{self.base_url}/MedicationRequest"
+        
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                headers = {"Content-Type": "application/fhir+json"}
+                response = await client.post(url, json=data, headers=headers)
+                
+                if response.status_code in [200, 201]:
+                    response.encoding = "utf-8"
+                    return response.json(), None
+                else:
+                    # 提取錯誤訊息
+                    error_text = response.text[:2000] if response.text else "No error message"
+                    try:
+                        error_json = response.json()
+                        # 處理 FHIR OperationOutcome
+                        if error_json.get("resourceType") == "OperationOutcome":
+                            issues = error_json.get("issue", [])
+                            if issues:
+                                error_details = []
+                                for issue in issues[:5]:  # 最多顯示 5 個問題
+                                    severity = issue.get("severity", "unknown")
+                                    code = issue.get("code", "unknown")
+                                    details = issue.get("details", {})
+                                    text = details.get("text") or details.get("display") or issue.get("diagnostics", "")
+                                    location = issue.get("location", [])
+                                    location_str = ", ".join(location[:3]) if location else ""
+                                    
+                                    issue_msg = f"{severity}: {code}"
+                                    if text:
+                                        issue_msg += f" - {text}"
+                                    if location_str:
+                                        issue_msg += f" (at: {location_str})"
+                                    error_details.append(issue_msg)
+                                
+                                error_text = "; ".join(error_details) if error_details else error_text
+                        # 處理其他 JSON 錯誤格式
+                        elif "issue" in error_json:
+                            issues = error_json.get("issue", [])
+                            error_details = "; ".join([
+                                f"{issue.get('severity', '')}: {issue.get('code', '')} - {issue.get('details', {}).get('text', '')}"
+                                for issue in issues[:5]
+                            ])
+                            error_text = error_details if error_details else error_text
+                        # 如果有 message 欄位
+                        elif "message" in error_json:
+                            error_text = error_json.get("message", error_text)
+                    except Exception as parse_error:
+                        # 如果 JSON 解析失敗，使用原始文字
+                        logger.warning(f"Failed to parse error response as JSON: {parse_error}")
+                    
+                    logger.error(
+                        f"FHIR MedicationRequest creation failed: POST {url} - "
+                        f"Status: {response.status_code}, Response: {error_text[:500]}"
+                    )
+                    # 保存完整錯誤訊息（最多 2000 字符）
+                    return None, f"HTTP {response.status_code}: {error_text[:2000]}"
+                    
+            except httpx.TimeoutException as e:
+                error_msg = f"Timeout: {str(e)}"
+                logger.error(f"FHIR request timeout: POST {url} - {error_msg}")
+                return None, error_msg
+            except httpx.RequestError as e:
+                error_msg = f"Request error: {str(e)}"
+                logger.error(f"FHIR request error: POST {url} - {error_msg}")
+                return None, error_msg
+            except Exception as e:
+                error_msg = f"Unexpected error: {str(e)}"
+                logger.error(f"FHIR unexpected error: POST {url} - {error_msg}")
+                return None, error_msg
+    
     def build_medication_request(
         self,
         patient_ref: str,
@@ -425,48 +502,84 @@ class FHIRClient:
         draft: dict,
         requester_ref: str
     ) -> dict:
-        """建構 MedicationRequest FHIR 資源"""
-        return {
+        """建構 MedicationRequest FHIR 資源
+        
+        符合 FHIR R4 規範和 TW Core MedicationRequest Profile 要求
+        參考: https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition-MedicationRequest-twcore.html
+        
+        TW Core 必要欄位:
+        - subject (必須)
+        - medicationCodeableConcept (必須)
+        - authoredOn (必須)
+        - requester (必須)
+        - dosageInstruction.doseAndRate.doseQuantity.value 和 unit (MBq) (必須)
+        - basedOn → ServiceRequest reference (必須)
+        """
+        from datetime import datetime, timezone
+        
+        # 確保 medicationCodeableConcept 有 text（如果沒有 display）
+        medication_code = draft.get("radiopharmaceuticalCode", "")
+        medication_display = draft.get("radiopharmaceuticalDisplay", "") or medication_code
+        
+        # 取得劑量值
+        dose_value = draft.get("suggestedDose", {}).get("value")
+        dose_unit = draft.get("suggestedDose", {}).get("unit", "MBq")
+        
+        # 建構 MedicationRequest（符合 TW Core Profile）
+        medication_request = {
             "resourceType": "MedicationRequest",
-            "status": "active",
-            "intent": "order",
-            "medicationCodeableConcept": {
-                "coding": [
-                    {
-                        "system": "urn:oid:1.2.3.4.5.6.7.8.9",  # 本地代碼系統
-                        "code": draft.get("radiopharmaceuticalCode", ""),
-                        "display": draft.get("radiopharmaceuticalDisplay", "")
-                    }
+            "meta": {
+                "profile": [
+                    "https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/MedicationRequest-twcore"
                 ]
             },
+            "status": "active",
+            "intent": "order",
+            "authoredOn": datetime.now(timezone.utc).isoformat(),  # TW Core 必要欄位
+            "medicationCodeableConcept": {
+                # 符合 TW Core CodeableConcept 要求
+                "coding": [
+                    {
+                        "system": "urn:oid:1.2.3.4.5.6.7.8.9",  # 本地代碼系統（符合 D2 規範）
+                        "code": medication_code,
+                        "display": medication_display
+                    }
+                ],
+                "text": medication_display  # TW Core 建議提供 text
+            },
             "subject": {
-                "reference": patient_ref
+                "reference": patient_ref  # TW Core 必要欄位
             },
             "requester": {
-                "reference": requester_ref
+                "reference": requester_ref  # TW Core 必要欄位
             },
             "basedOn": [
-                {"reference": service_request_ref}
+                {"reference": service_request_ref}  # TW Core 必要欄位（D3 規範）
             ],
             "dosageInstruction": [
                 {
                     "doseAndRate": [
                         {
                             "doseQuantity": {
-                                "value": draft.get("suggestedDose", {}).get("value"),
-                                "unit": draft.get("suggestedDose", {}).get("unit", "MBq"),
-                                "system": "http://unitsofmeasure.org",
-                                "code": "MBq"
+                                "value": dose_value,  # TW Core 必要欄位
+                                "unit": dose_unit,  # 必須使用 UCUM 'MBq'（D2 規範）
+                                "system": "http://unitsofmeasure.org",  # UCUM 系統
+                                "code": "MBq"  # UCUM 代碼
                             }
                         }
                     ]
                 }
-            ],
-            "note": [
+            ]
+        }
+        
+        # 只有在有 notes 時才添加（TW Core 可選欄位）
+        if draft.get("notes"):
+            medication_request["note"] = [
                 {
                     "text": draft.get("notes", "")
                 }
-            ] if draft.get("notes") else []
-        }
+            ]
+        
+        return medication_request
 
 

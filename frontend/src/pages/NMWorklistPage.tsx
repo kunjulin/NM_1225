@@ -27,6 +27,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Checkbox,
 } from '@mui/material'
 import {
   Refresh as RefreshIcon,
@@ -61,6 +62,7 @@ export function NMWorklistPage() {
   const queryClient = useQueryClient()
   const { getAuthHeaders } = useAuth()
   const [tabValue, setTabValue] = useState(0)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({
     open: false,
     message: '',
@@ -142,6 +144,7 @@ export function NMWorklistPage() {
     onSuccess: (result) => {
       setBulkSubmitResult(result)
       setBulkSubmitDialogOpen(true)
+      setSelectedIds(new Set()) // 送審後清除選取
       queryClient.invalidateQueries({ queryKey: ['nm-worklist'] })
     },
     onError: (error) => {
@@ -167,13 +170,37 @@ export function NMWorklistPage() {
       .map(item => item.caseId)
   }
 
+  const handleSelectAll = (items: WorklistItem[]) => {
+    // 只選擇可送審的項目（非 FAIL）
+    const submittableItems = items.filter(item => item.ruleEval.overallSeverity !== 'FAIL')
+    if (selectedIds.size === submittableItems.length && submittableItems.length > 0) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(submittableItems.map(i => i.caseId)))
+    }
+  }
+
+  const handleSelect = (caseId: string) => {
+    const newSet = new Set(selectedIds)
+    if (newSet.has(caseId)) {
+      newSet.delete(caseId)
+    } else {
+      newSet.add(caseId)
+    }
+    setSelectedIds(newSet)
+  }
+
   const handleBulkSubmit = () => {
-    const caseIds = getSubmittableCaseIds()
-    if (caseIds.length === 0) {
-      setSnackbar({ open: true, message: '沒有可送審的案件', severity: 'info' })
+    if (selectedIds.size === 0) {
+      setSnackbar({ open: true, message: '請選擇要送審的案件', severity: 'info' })
       return
     }
-    bulkSubmitMutation.mutate(caseIds)
+    bulkSubmitMutation.mutate(Array.from(selectedIds))
+  }
+
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue)
+    setSelectedIds(new Set()) // 切換 tab 時清除選取
   }
 
   const formatDate = (dateStr: string) => {
@@ -301,7 +328,7 @@ export function NMWorklistPage() {
 
       <Tabs
         value={tabValue}
-        onChange={(_, v) => setTabValue(v)}
+        onChange={handleTabChange}
         sx={{ mb: 2 }}
       >
         {groups.map((group) => (
@@ -340,15 +367,19 @@ export function NMWorklistPage() {
                         />
                       )}
                     </Typography>
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      startIcon={<SendIcon />}
-                      onClick={handleBulkSubmit}
-                      disabled={getSubmittableCaseIds().length === 0 || bulkSubmitMutation.isPending}
-                    >
-                      {bulkSubmitMutation.isPending ? '送審中...' : `全部送審 (${getSubmittableCaseIds().length})`}
-                    </Button>
+                    <Stack direction="row" spacing={2} alignItems="center">
+                      {selectedIds.size > 0 && (
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={<SendIcon />}
+                          onClick={handleBulkSubmit}
+                          disabled={bulkSubmitMutation.isPending}
+                        >
+                          {bulkSubmitMutation.isPending ? '送審中...' : `批次送審 (${selectedIds.size})`}
+                        </Button>
+                      )}
+                    </Stack>
                   </Stack>
                 </Box>
               )}
@@ -364,6 +395,21 @@ export function NMWorklistPage() {
                     <Table>
                       <TableHead>
                         <TableRow>
+                          {group.groupKey === 'NM_DRAFTED' && (
+                            <TableCell padding="checkbox">
+                              <Checkbox
+                                checked={
+                                  selectedIds.size === getSubmittableCaseIds().length && 
+                                  getSubmittableCaseIds().length > 0
+                                }
+                                indeterminate={
+                                  selectedIds.size > 0 && 
+                                  selectedIds.size < getSubmittableCaseIds().length
+                                }
+                                onChange={() => handleSelectAll(group.items)}
+                              />
+                            </TableCell>
+                          )}
                           <TableCell>病人</TableCell>
                           <TableCell>檢查</TableCell>
                           <TableCell>狀態</TableCell>
@@ -373,70 +419,83 @@ export function NMWorklistPage() {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {group.items.map((item: WorklistItem) => (
-                          <TableRow
-                            key={item.caseId}
-                            hover
-                            onClick={() => handleRowClick(item.caseId)}
-                            sx={{ cursor: 'pointer' }}
-                          >
-                            <TableCell>
-                              <Typography variant="body2" fontWeight={500}>
-                                {item.snapshotSummary.patientName || '未知'}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {item.snapshotSummary.patientId || item.patientRef}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              {item.snapshotSummary.examDisplay || item.snapshotSummary.examCode || '-'}
-                            </TableCell>
-                            <TableCell>
-                              <Chip
-                                label={statusLabels[item.status] || item.status}
-                                size="small"
-                                sx={{
-                                  bgcolor: statusColors[item.status as keyof typeof statusColors] || '#9E9E9E',
-                                  color: '#FFF',
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Chip
-                                icon={severityIcons[item.ruleEval.overallSeverity] as React.ReactElement}
-                                label={item.ruleEval.overallSeverity}
-                                size="small"
-                                sx={{
-                                  bgcolor: severityColors[item.ruleEval.overallSeverity],
-                                  color: '#FFF',
-                                  '& .MuiChip-icon': { color: '#FFF' },
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              {item.ruleEval.flags.length > 0 ? (
-                                <Chip
-                                  label={item.ruleEval.flags.length}
-                                  size="small"
-                                  color={
-                                    item.ruleEval.flags.some(f => f.severity === 'FAIL')
-                                      ? 'error'
-                                      : item.ruleEval.flags.some(f => f.severity === 'WARN')
-                                      ? 'warning'
-                                      : 'default'
-                                  }
-                                />
-                              ) : (
-                                '-'
+                        {group.items.map((item: WorklistItem) => {
+                          const isSubmittable = item.ruleEval.overallSeverity !== 'FAIL'
+                          const isSelected = selectedIds.has(item.caseId)
+                          return (
+                            <TableRow
+                              key={item.caseId}
+                              hover
+                              onClick={() => handleRowClick(item.caseId)}
+                              sx={{ cursor: 'pointer' }}
+                            >
+                              {group.groupKey === 'NM_DRAFTED' && (
+                                <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                                  <Checkbox
+                                    checked={isSelected}
+                                    disabled={!isSubmittable}
+                                    onChange={() => handleSelect(item.caseId)}
+                                  />
+                                </TableCell>
                               )}
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="caption">
-                                {formatDate(item.updatedAt)}
-                              </Typography>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={500}>
+                                  {item.snapshotSummary.patientName || '未知'}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {item.snapshotSummary.patientId || item.patientRef}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                {item.snapshotSummary.examDisplay || item.snapshotSummary.examCode || '-'}
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={statusLabels[item.status] || item.status}
+                                  size="small"
+                                  sx={{
+                                    bgcolor: statusColors[item.status as keyof typeof statusColors] || '#9E9E9E',
+                                    color: '#FFF',
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  icon={severityIcons[item.ruleEval.overallSeverity] as React.ReactElement}
+                                  label={item.ruleEval.overallSeverity}
+                                  size="small"
+                                  sx={{
+                                    bgcolor: severityColors[item.ruleEval.overallSeverity],
+                                    color: '#FFF',
+                                    '& .MuiChip-icon': { color: '#FFF' },
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                {item.ruleEval.flags.length > 0 ? (
+                                  <Chip
+                                    label={item.ruleEval.flags.length}
+                                    size="small"
+                                    color={
+                                      item.ruleEval.flags.some(f => f.severity === 'FAIL')
+                                        ? 'error'
+                                        : item.ruleEval.flags.some(f => f.severity === 'WARN')
+                                        ? 'warning'
+                                        : 'default'
+                                    }
+                                  />
+                                ) : (
+                                  '-'
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="caption">
+                                  {formatDate(item.updatedAt)}
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
                       </TableBody>
                     </Table>
                   </TableContainer>

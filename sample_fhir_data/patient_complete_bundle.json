@@ -1722,10 +1722,10 @@
             {
               "system": "http://snomed.info/sct",
               "code": "77477000",
-              "display": "Computerized axial tomography of bone"
+              "display": "Bone scan"
             }
           ],
-          "text": "骨骼掃描 (Tc-99m MDP)"
+          "text": "骨骼掃描"
         },
         "subject": {
           "reference": "Patient/patient-1007",
@@ -1858,10 +1858,10 @@
             {
               "system": "http://snomed.info/sct",
               "code": "78800008",
-              "display": "全身 FDG PET/CT"
+              "display": "FDG PET scan"
             }
           ],
-          "text": "全身 FDG PET/CT"
+          "text": "葡萄糖正子造影"
         },
         "subject": {
           "reference": "Patient/patient-1001",
@@ -2290,10 +2290,10 @@
             {
               "system": "http://snomed.info/sct",
               "code": "77477000",
-              "display": "三相骨骼掃描"
+              "display": "Bone scan"
             }
           ],
-          "text": "三相骨骼掃描"
+          "text": "骨骼掃描"
         },
         "subject": {
           "reference": "Patient/patient-1002",
@@ -2771,11 +2771,11 @@
           "coding": [
             {
               "system": "http://snomed.info/sct",
-              "code": "39937001",
-              "display": "甲狀腺攝取率"
+              "code": "241620005",
+              "display": "Renal scan"
             }
           ],
-          "text": "甲狀腺攝取率"
+          "text": "腎功能掃描"
         },
         "subject": {
           "reference": "Patient/patient-1003",
@@ -2791,11 +2791,11 @@
             "coding": [
               {
                 "system": "http://hl7.org/fhir/sid/icd-10-cm",
-                "code": "E05.0",
-                "display": "Thyrotoxicosis with diffuse goiter"
+                "code": "N18.9",
+                "display": "Chronic kidney disease"
               }
             ],
-            "text": "甲狀腺功能亢進"
+            "text": "慢性腎臟病"
           }
         ]
       },
@@ -3204,10 +3204,10 @@
             {
               "system": "http://snomed.info/sct",
               "code": "241620005",
-              "display": "腎功能掃描 (MAG3)"
+              "display": "Renal scan"
             }
           ],
-          "text": "腎功能掃描 (MAG3)"
+          "text": "腎功能掃描"
         },
         "subject": {
           "reference": "Patient/patient-1004",
@@ -3708,11 +3708,11 @@
           "coding": [
             {
               "system": "http://snomed.info/sct",
-              "code": "432100008",
-              "display": "MIBG 心臟交感神經顯像"
+              "code": "312124007",
+              "display": "MIBG scan"
             }
           ],
-          "text": "MIBG 心臟交感神經顯像"
+          "text": "MIBG 掃描"
         },
         "subject": {
           "reference": "Patient/patient-1005",
@@ -4191,10 +4191,10 @@
             {
               "system": "http://snomed.info/sct",
               "code": "241520004",
-              "display": "腎皮質掃描 (DMSA)"
+              "display": "DMSA scan"
             }
           ],
-          "text": "腎皮質掃描 (DMSA)"
+          "text": "腎臟皮質掃描"
         },
         "subject": {
           "reference": "Patient/patient-1006",

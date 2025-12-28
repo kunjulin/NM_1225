@@ -3,15 +3,17 @@
 # Usage: Run .\upload-demo-data.ps1 in PowerShell
 #
 # This script uploads patient_complete_bundle.json which contains:
-# - Patient (basic patient info)
-# - Encounter (3 medical encounters)
-# - Condition (4 diagnoses/conditions)
-# - MedicationStatement (3 medication records)
-# - Observation (11 lab results: weight, renal, hepatic, thyroid, blood, etc.)
-# - AllergyIntolerance (2 allergy records)
-# - Procedure (2 procedure records)
-# - ServiceRequest (nuclear medicine exam request)
-# - Practitioner (physician)
+# - 7 Patients (patient-1001 to patient-1007 with complete clinical data)
+# - 7 ServiceRequests (exam-001 to exam-007 for nuclear medicine exams)
+# - Multiple Encounters (medical encounters for each patient)
+# - Multiple Conditions (diagnoses/conditions for each patient)
+# - Multiple MedicationStatements (medication records for each patient)
+# - Multiple Observations (lab results: weight, renal, hepatic, thyroid, blood, etc.)
+# - Multiple AllergyIntolerances (allergy records)
+# - Multiple Procedures (procedure records)
+# - Practitioners (physicians)
+#
+# Note: patient-1007 has the most complete clinical data for testing Patient Information Card
 
 $ErrorActionPreference = "Stop"
 
@@ -111,15 +113,17 @@ try {
     
     Write-Host ""
     Write-Host "Uploaded resources include:" -ForegroundColor Cyan
-    Write-Host "  - Patient (basic patient info)" -ForegroundColor White
-    Write-Host "  - Encounter (3 medical encounters)" -ForegroundColor White
-    Write-Host "  - Condition (4 diagnoses/conditions)" -ForegroundColor White
-    Write-Host "  - MedicationStatement (3 medication records)" -ForegroundColor White
-    Write-Host "  - Observation (11 lab results)" -ForegroundColor White
-    Write-Host "  - AllergyIntolerance (2 allergy records)" -ForegroundColor White
-    Write-Host "  - Procedure (2 procedure records)" -ForegroundColor White
-    Write-Host "  - ServiceRequest (nuclear medicine exam request)" -ForegroundColor White
-    Write-Host "  - Practitioner (physician)" -ForegroundColor White
+    Write-Host "  - 7 Patients (patient-1001 to patient-1007)" -ForegroundColor White
+    Write-Host "  - 7 ServiceRequests (exam-001 to exam-007 for nuclear medicine exams)" -ForegroundColor White
+    Write-Host "  - 15 Encounters (medical encounters for each patient)" -ForegroundColor White
+    Write-Host "  - 16 Conditions (diagnoses/conditions for each patient)" -ForegroundColor White
+    Write-Host "  - 10 MedicationStatements (medication records for each patient)" -ForegroundColor White
+    Write-Host "  - 32 Observations (lab results: weight, renal, hepatic, thyroid, blood, etc.)" -ForegroundColor White
+    Write-Host "  - 4 AllergyIntolerances (allergy records)" -ForegroundColor White
+    Write-Host "  - 2 Procedures (procedure records)" -ForegroundColor White
+    Write-Host "  - 2 Practitioners (physicians)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Note: patient-1007 has the most complete clinical data for testing Patient Information Card" -ForegroundColor Yellow
 }
 catch {
     Write-Host ""
@@ -161,14 +165,17 @@ Write-Host "Upload completed!" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
-Write-Host "1. Verify Patient ID: patient-1007 uploaded successfully" -ForegroundColor White
-Write-Host "2. Sync FHIR data in application (click 'Sync FHIR' button)" -ForegroundColor White
-Write-Host "3. Check if the patient case appears in nuclear medicine worklist" -ForegroundColor White
-Write-Host "4. Open case detail page, verify Patient Information Card displays:" -ForegroundColor White
+Write-Host "1. Verify all Patients uploaded successfully (patient-1001 to patient-1007)" -ForegroundColor White
+Write-Host "2. Verify all ServiceRequests uploaded successfully (exam-001 to exam-007)" -ForegroundColor White
+Write-Host "3. Sync FHIR data in application (click 'Sync FHIR' button)" -ForegroundColor White
+Write-Host "4. Check if patient cases appear in nuclear medicine worklist" -ForegroundColor White
+Write-Host "5. Open case detail page (e.g., exam-007 for patient-1007), verify Patient Information Card displays:" -ForegroundColor White
 Write-Host "   - Encounters" -ForegroundColor Gray
 Write-Host "   - Conditions" -ForegroundColor Gray
 Write-Host "   - Medications" -ForegroundColor Gray
 Write-Host "   - Lab Results" -ForegroundColor Gray
 Write-Host "   - Allergies" -ForegroundColor Gray
 Write-Host "   - Procedures" -ForegroundColor Gray
+Write-Host ""
+Write-Host "Note: patient-1007 (exam-007) has the most complete clinical data for testing" -ForegroundColor Cyan
 Write-Host ""

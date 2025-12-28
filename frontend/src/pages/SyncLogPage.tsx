@@ -3,7 +3,7 @@
  * 顯示 MedicationRequest 上傳到 FHIR Server 的記錄
  */
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -30,6 +30,7 @@ import {
   MenuItem,
   Tooltip,
   IconButton,
+  Snackbar,
 } from '@mui/material'
 import {
   ArrowBack as BackIcon,
@@ -38,6 +39,7 @@ import {
   Error as ErrorIcon,
   HourglassEmpty as PendingIcon,
   Schedule as InProgressIcon,
+  Replay as RetryIcon,
 } from '@mui/icons-material'
 import { apiClient } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -91,6 +93,50 @@ export function SyncLogPage() {
   }
 
   const totalPages = data ? Math.ceil(data.total / pageSize) : 0
+  const queryClient = useQueryClient()
+  const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set())
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+    open: false,
+    message: '',
+    severity: 'success',
+  })
+
+  // 重試 Mutation
+  const retryMutation = useMutation<{ success: boolean; status: string; last_error?: string; retry_count: number }, Error, string>({
+    mutationFn: async (outboxId: string) => {
+      apiClient.setAuthHeaders(getAuthHeaders())
+      return apiClient.post<{ success: boolean; status: string; last_error?: string; retry_count: number }>(`/analytics/sync-logs/${outboxId}/retry`)
+    },
+    onSuccess: (data, outboxId) => {
+      setRetryingIds(prev => {
+        const next = new Set(prev)
+        next.delete(outboxId)
+        return next
+      })
+      if (data.success) {
+        setSnackbar({ open: true, message: '重試成功！MedicationRequest 已建立', severity: 'success' })
+      } else {
+        setSnackbar({ open: true, message: `重試失敗: ${data.last_error || '未知錯誤'}`, severity: 'error' })
+      }
+      // 刷新列表
+      queryClient.invalidateQueries({ queryKey: ['sync-logs'] })
+    },
+    onError: (error, outboxId) => {
+      setRetryingIds(prev => {
+        const next = new Set(prev)
+        next.delete(outboxId)
+        return next
+      })
+      setSnackbar({ open: true, message: `重試失敗: ${(error as Error).message}`, severity: 'error' })
+    },
+    onMutate: (outboxId) => {
+      setRetryingIds(prev => new Set(prev).add(outboxId))
+    },
+  })
+
+  const handleRetry = (outboxId: string) => {
+    retryMutation.mutate(outboxId)
+  }
 
   return (
     <Box>
@@ -191,12 +237,31 @@ export function SyncLogPage() {
                             </Typography>
                           </TableCell>
                           <TableCell>
-                            <Chip
-                              icon={config.icon as React.ReactElement}
-                              label={config.label}
-                              color={config.color}
-                              size="small"
-                            />
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <Chip
+                                icon={config.icon as React.ReactElement}
+                                label={config.label}
+                                color={config.color}
+                                size="small"
+                              />
+                              {/* 只有 FAILED 或 PENDING 狀態才顯示重試按鈕 */}
+                              {(log.status === 'FAILED' || log.status === 'PENDING') && (
+                                <Tooltip title="手動重試上傳">
+                                  <IconButton
+                                    size="small"
+                                    color="primary"
+                                    onClick={() => handleRetry(log.id)}
+                                    disabled={retryingIds.has(log.id) || retryMutation.isPending}
+                                  >
+                                    {retryingIds.has(log.id) ? (
+                                      <CircularProgress size={16} />
+                                    ) : (
+                                      <RetryIcon fontSize="small" />
+                                    )}
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                            </Stack>
                             {log.last_error && (
                               <Tooltip title={log.last_error}>
                                 <Typography 
@@ -209,6 +274,7 @@ export function SyncLogPage() {
                                     textOverflow: 'ellipsis',
                                     whiteSpace: 'nowrap',
                                     cursor: 'help',
+                                    mt: 0.5,
                                   }}
                                 >
                                   {log.last_error}
@@ -278,6 +344,22 @@ export function SyncLogPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Snackbar for retry notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          severity={snackbar.severity} 
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }

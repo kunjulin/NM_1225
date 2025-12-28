@@ -73,13 +73,31 @@ class SnapshotService:
         # 若需要重新擷取或快照不存在
         if refresh or not case.snapshot_json:
             await self._refresh_snapshot(case)
+        else:
+            # 檢查快照是否只包含基本資料（缺少臨床資料）
+            snapshot_data = json.loads(case.snapshot_json or "{}")
+            has_clinical_data = (
+                snapshot_data.get("encounters") or
+                snapshot_data.get("conditionList") or
+                snapshot_data.get("medications") or
+                snapshot_data.get("procedures") or
+                snapshot_data.get("labResults") or
+                snapshot_data.get("allergyList")
+            )
+            
+            # 如果快照存在但沒有臨床資料，自動重新建立完整快照
+            if not has_clinical_data:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"Snapshot for case {case_id} exists but lacks clinical data, refreshing...")
+                await self._refresh_snapshot(case)
         
         # 解析快照
         snapshot_data = json.loads(case.snapshot_json or "{}")
         snapshot = self._parse_snapshot_data(snapshot_data)
         
-        # 產生候選值
-        candidate_facts = self._generate_candidate_facts(case, snapshot_data)
+        # 不再產生候選值（已移除自動填入功能）
+        candidate_facts = []
         
         # 解析草案資訊
         draft_data = json.loads(case.draft_json or "{}")
@@ -312,14 +330,16 @@ class SnapshotService:
                         exam_display = coding.get("display", "") or code.get("text", "")
                         
                         # 將 SNOMED CT 代碼映射到系統 examCode
-                        # SNOMED CT 到系統 examCode 的映射表
+                        # SNOMED CT 到系統 examCode 的映射表（對應 rules_config.yaml）
                         snomed_to_exam_code = {
-                            "77477000": "BONE_SCAN",  # Bone scan (骨骼掃描)
-                            "241620005": "MAG3",      # Renal scan (腎功能掃描)
-                            "241520004": "DMSA",      # DMSA scan (腎臟皮質掃描)
-                            "312124007": "MIBG",      # MIBG scan
-                            "78800008": "FDG_PET",    # PET scan
-                            "241520004": "DTPA",      # DTPA scan (腎絲球過濾率掃描)
+                            "77477000": "BONE_SCAN",      # Bone scan (骨骼掃描)
+                            "241620005": "MAG3",          # Renal scan (腎功能掃描)
+                            "241520004": "DMSA",          # DMSA scan (腎臟皮質掃描)
+                            "312124007": "MIBG",          # MIBG scan
+                            "78800008": "FDG_PET",        # FDG PET scan (葡萄糖正子造影)
+                            "432100008": "DTPA",          # DTPA scan (腎絲球過濾率掃描) - 使用 GFR measurement code
+                            "432100009": "NaF_PET",       # NaF PET scan (氟化鈉正子造影)
+                            "432100010": "DOTATATE",      # DOTATATE PET scan
                         }
                         
                         exam_code = snomed_to_exam_code.get(snomed_code, snomed_code)  # 如果沒有映射，使用原始代碼
@@ -666,36 +686,6 @@ class SnapshotService:
             })
         return result
     
-    def _generate_candidate_facts(
-        self, 
-        case: OrderCase, 
-        snapshot_data: dict
-    ) -> list[CandidateFact]:
-        """根據快照產生自動填入候選值"""
-        candidates = []
-        local_facts = json.loads(case.local_facts_json or "{}")
-        
-        # 體重候選值
-        if "weightKg" not in local_facts:
-            observations = snapshot_data.get("observations", [])
-            for obs in observations:
-                if obs.get("code", {}).get("coding", [{}])[0].get("code") == "29463-7":
-                    value = obs.get("valueQuantity", {}).get("value")
-                    if value:
-                        candidates.append(CandidateFact(
-                            factType=FactType.WEIGHT_KG,
-                            value=float(value),
-                            unit="kg",
-                            asOf=datetime.fromisoformat(
-                                obs.get("effectiveDateTime", datetime.now(timezone.utc).isoformat())
-                            ),
-                            sourceType=SourceType.FHIR_RESOURCE,
-                            sourceRef=f"Observation/{obs.get('id', 'unknown')}",
-                            confidence=Confidence.HIGH,
-                            extractionMethod=ExtractionMethod.STRUCTURED,
-                        ))
-        
-        return candidates
     
     def _fact_type_to_key(self, fact_type: FactType) -> str:
         """轉換 FactType 為 local_facts key"""

@@ -5,7 +5,7 @@ KPI 與統計分析、CSV 匯出、同步記錄
 import csv
 import io
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -20,6 +20,8 @@ from app.schemas.case import CaseStatus
 from app.models import OrderCase, ReviewEvent, Outbox, User
 from app.services.analytics_service import AnalyticsService
 from app.services.auth_service import get_current_user, CurrentUser
+from app.services.outbox_worker import OutboxWorker
+from fastapi import HTTPException, status
 
 router = APIRouter()
 
@@ -309,5 +311,65 @@ async def get_sync_logs(
         page=page,
         page_size=page_size,
     )
+
+
+@router.post("/sync-logs/{outbox_id}/retry")
+async def retry_sync_log(
+    outbox_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """手動重試失敗的 FHIR 同步記錄
+    
+    允許管理員或藥師手動觸發失敗的 MedicationRequest 上傳重試
+    """
+    # 查詢 Outbox 項目
+    result = await db.execute(
+        select(Outbox).where(Outbox.id == outbox_id)
+    )
+    item = result.scalar_one_or_none()
+    
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Outbox item {outbox_id} not found"
+        )
+    
+    # 只有 FAILED 或 PENDING 狀態的項目可以手動重試
+    if item.status not in ["FAILED", "PENDING"]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot retry outbox item in status: {item.status}. Only FAILED or PENDING items can be retried."
+        )
+    
+    # 使用 OutboxWorker 重試
+    worker = OutboxWorker()
+    
+    try:
+        # 重置狀態為 PENDING，清除 next_retry_at，立即處理
+        item.status = "PENDING"
+        item.next_retry_at = None
+        item.updated_at = datetime.now(timezone.utc).isoformat()
+        
+        # 立即處理
+        await worker._process_item(db, item)
+        
+        await db.commit()
+        
+        # 查詢更新後的狀態
+        await db.refresh(item)
+        
+        return {
+            "success": item.status == "DONE",
+            "status": item.status,
+            "last_error": item.last_error,
+            "retry_count": item.retry_count,
+        }
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retry: {str(e)}"
+        )
 
 

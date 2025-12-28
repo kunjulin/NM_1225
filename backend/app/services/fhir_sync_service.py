@@ -17,6 +17,7 @@ from app.schemas.case import CaseStatus
 from app.fhir.client import FHIRClient
 from app.rules.engine import RuleEngine
 from app.schemas.rule_eval import Severity
+from app.services.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class FHIRSyncService:
         self.settings = get_settings()
         self.fhir_client = FHIRClient()
         self.rule_engine = RuleEngine()
+        self.snapshot_service = SnapshotService(db)
     
     async def sync_service_requests(
         self,
@@ -177,12 +179,35 @@ class FHIRSyncService:
             snapshot_data = json.loads(existing_case.snapshot_json or "{}")
             current_patient_name = snapshot_data.get("patientName", "")
             
+            # 檢查快照是否只包含基本資料（缺少臨床資料）
+            has_clinical_data = (
+                snapshot_data.get("encounters") or
+                snapshot_data.get("conditionList") or
+                snapshot_data.get("medications") or
+                snapshot_data.get("procedures") or
+                snapshot_data.get("labResults") or
+                snapshot_data.get("allergyList")
+            )
+            
             logger.info(
                 f"Existing case {existing_case.id}: "
                 f"current_name='{current_patient_name}', "
                 f"new_name='{patient_name}', "
+                f"has_clinical_data={bool(has_clinical_data)}, "
                 f"should_update={bool((not current_patient_name or current_patient_name in ['', '未知', '???', 'Unknown'] or '???' in current_patient_name) and patient_name)}"
             )
+            
+            # 如果快照缺少臨床資料，重新建立完整快照
+            if not has_clinical_data:
+                logger.info(f"Existing case {existing_case.id} lacks clinical data, refreshing full snapshot...")
+                try:
+                    await self.snapshot_service._refresh_snapshot(existing_case)
+                    await self.db.flush()
+                    logger.info(f"Successfully refreshed full clinical snapshot for case {existing_case.id}")
+                    return "updated"
+                except Exception as e:
+                    logger.error(f"Failed to refresh clinical snapshot for case {existing_case.id}: {e}", exc_info=True)
+                    # 繼續執行下面的更新邏輯
             
             # 如果病人姓名為空、未知或包含 "???"，且現在有新的姓名，則更新
             if (not current_patient_name or 
@@ -211,14 +236,16 @@ class FHIRSyncService:
         exam_display = coding.get("display", "") or code.get("text", "")
         
         # 將 SNOMED CT 代碼映射到系統 examCode
-        # SNOMED CT 到系統 examCode 的映射表
+        # SNOMED CT 到系統 examCode 的映射表（對應 rules_config.yaml）
         snomed_to_exam_code = {
             "77477000": "BONE_SCAN",      # Bone scan (骨骼掃描)
             "241620005": "MAG3",          # Renal scan (腎功能掃描)
             "241520004": "DMSA",          # DMSA scan (腎臟皮質掃描)
             "312124007": "MIBG",          # MIBG scan
-            "78800008": "FDG_PET",        # PET scan
-            "241520004": "DTPA",          # DTPA scan (腎絲球過濾率掃描)
+            "78800008": "FDG_PET",        # FDG PET scan (葡萄糖正子造影)
+            "432100008": "DTPA",          # DTPA scan (腎絲球過濾率掃描) - 使用 GFR measurement code
+            "432100009": "NaF_PET",       # NaF PET scan (氟化鈉正子造影)
+            "432100010": "DOTATATE",      # DOTATATE PET scan
         }
         
         exam_code = snomed_to_exam_code.get(snomed_code, snomed_code)  # 如果沒有映射，使用原始代碼
@@ -270,6 +297,10 @@ class FHIRSyncService:
         # 先 flush 以便後續查詢
         await self.db.flush()
         
+        # 注意：完整的臨床資料快照將由背景 Worker 非同步拉取
+        # 這樣可以讓 ServiceRequest 同步更快完成
+        logger.info(f"Created basic OrderCase {case_id} from ServiceRequest {sr_id}, clinical data will be fetched asynchronously")
+        
         # 執行 CDS 規則評估
         rule_eval = self.rule_engine.evaluate(order_case)
         
@@ -280,10 +311,21 @@ class FHIRSyncService:
             dose_calc = self.rule_engine.calculate_na2024_dose(exam_code, weight_kg)
             
             if dose_calc:
+                # 取得對應的放射性藥物代碼
+                radiopharmaceutical_code = self.rule_engine.config.get_radiopharmaceutical(exam_code)
+                if not radiopharmaceutical_code:
+                    # 如果沒有配置，使用檢查代碼作為後備
+                    radiopharmaceutical_code = exam_code
+                    logger.warning(f"No radiopharmaceutical config for {exam_code}, using exam_code as fallback")
+                
+                # 取得檢查配置以獲取顯示名稱
+                exam_config = self.rule_engine.config.get_exam_config(exam_code) or {}
+                
                 # 建立草案
                 draft_data = {
                     "examCode": exam_code,
-                    "radiopharmaceuticalCode": exam_code,  # 使用檢查代碼作為放射性藥物代碼
+                    "radiopharmaceuticalCode": radiopharmaceutical_code,
+                    "radiopharmaceuticalDisplay": exam_config.get("name", ""),
                     "suggestedDose": {
                         "value": dose_calc.suggested_dose,
                         "unit": "MBq"
