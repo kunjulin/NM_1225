@@ -56,9 +56,10 @@ services:
       
       # SMART on FHIR OAuth2 設定 (Production Mode 需要)
       # 請從 THAS 取得並設定這些值
+      # 注意：NM_SMART_REDIRECT_URI 必須與 THAS SAND-BOX 中設定的 Launch URL 完全一致
       - NM_SMART_CLIENT_ID=${NM_SMART_CLIENT_ID:-}
       - NM_SMART_CLIENT_SECRET=${NM_SMART_CLIENT_SECRET:-}
-      - NM_SMART_REDIRECT_URI=${NM_SMART_REDIRECT_URI:-http://localhost:5173/auth/callback}
+      - NM_SMART_REDIRECT_URI=${NM_SMART_REDIRECT_URI:-https://clint-inexpert-mesmerizingly.ngrok-free.dev/auth/callback}
       - NM_SMART_AUTHORIZATION_ENDPOINT=${NM_SMART_AUTHORIZATION_ENDPOINT:-}
       - NM_SMART_TOKEN_ENDPOINT=${NM_SMART_TOKEN_ENDPOINT:-}
     volumes:

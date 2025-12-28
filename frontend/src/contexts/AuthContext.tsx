@@ -51,12 +51,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const config = await apiClient.get<{ isDemo: boolean }>('/config')
         setState(prev => ({ ...prev, isDemo: config.isDemo }))
+        
+        // 如果是 Production Mode，驗證認證資訊是否有效
+        if (!config.isDemo && state.isAuthenticated) {
+          // 在 Production Mode 下，如果沒有有效的 SMART 認證，清除舊的認證資訊
+          // 這會在第一次 API 調用時由 401 錯誤處理
+        }
       } catch (err) {
         console.error('Failed to load app config:', err)
         // 保持預設值
       }
     }
     loadConfig()
+  }, [])
+
+  // 設置 401 錯誤處理
+  useEffect(() => {
+    apiClient.setOnUnauthorized(() => {
+      // 清除認證狀態
+      setState(defaultState)
+      localStorage.removeItem('nm_auth')
+      // 重定向到登入頁（如果不在登入頁）
+      if (window.location.pathname !== '/login' && window.location.pathname !== '/auth/callback') {
+        window.location.href = '/login'
+      }
+    })
   }, [])
 
   const login = useCallback((subject: string, actingRole: ActingRole) => {

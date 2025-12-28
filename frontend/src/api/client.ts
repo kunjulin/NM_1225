@@ -23,6 +23,7 @@ interface ApiError {
 export class ApiClient {
   private baseUrl: string
   private defaultHeaders: Record<string, string>
+  private onUnauthorized?: () => void
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl
@@ -36,6 +37,10 @@ export class ApiClient {
       ...this.defaultHeaders,
       ...headers,
     }
+  }
+
+  setOnUnauthorized(callback: () => void) {
+    this.onUnauthorized = callback
   }
 
   private buildUrl(path: string, params?: Record<string, string>): string {
@@ -67,6 +72,20 @@ export class ApiClient {
     console.log(`[API] Response status: ${response.status}`, response)
 
     if (!response.ok) {
+      // 處理 401 未授權錯誤
+      if (response.status === 401) {
+        // 清除認證狀態並重定向到登入頁
+        if (this.onUnauthorized) {
+          this.onUnauthorized()
+        } else {
+          // 如果沒有設置回調，直接清除 localStorage 並重定向
+          localStorage.removeItem('nm_auth')
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login'
+          }
+        }
+      }
+
       let errorData: ApiError
       // 先讀取 text，再嘗試解析為 JSON
       const text = await response.text()
