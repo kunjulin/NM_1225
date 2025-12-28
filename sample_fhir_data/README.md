@@ -9,6 +9,7 @@
 | `upload-fhir-data.ps1` | PowerShell 上傳腳本（Windows 推薦使用，已修正 UTF-8 編碼） |
 | `upload-patient.ps1` | 單一 Patient 資源上傳腳本（用於測試編碼） |
 | `query-patient.ps1` | Patient 查詢腳本（用於驗證編碼是否正確） |
+| `clear-snapshots.ps1` | 清除 Docker 容器內 APP DB 的所有 snapshot 資料腳本 |
 | `patient_complete_bundle.json` | 完整病人資料 Bundle（包含所有臨床資料） |
 | `patient_basic.json` | 基本病人資料 (Patient) |
 | `encounters.json` | 就醫紀錄 (Encounter) |
@@ -18,6 +19,25 @@
 | `medications.json` | 用藥紀錄 (MedicationStatement) |
 | `procedures.json` | 處置紀錄 (Procedure) |
 | `service_request.json` | 核醫檢查申請 (ServiceRequest) |
+
+## 資料庫管理
+
+### 清除 Snapshot 資料
+
+**清除 Docker 容器內的所有 snapshot 資料（示範前使用）：**
+
+```powershell
+cd sample_fhir_data
+.\clear-snapshots.ps1
+```
+
+腳本會自動：
+- 檢查 Docker 容器 `nm-backend-thas` 是否運行
+- 複製清理腳本到容器內
+- 執行清理並顯示統計資訊（案件數、審查事件數、Outbox 項目數）
+- 清除所有 OrderCase、ReviewEvent 和 Outbox 資料
+
+**注意：** 此操作會刪除所有案件資料，請在示範前使用。
 
 ## 上傳方式
 
