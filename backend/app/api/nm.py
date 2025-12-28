@@ -33,6 +33,7 @@ class SyncWorklistResponse(BaseModel):
     """同步工作清單回應"""
     fetched: int
     created: int
+    updated: int = 0
     skipped: int
     errors: int
     error_details: list[str] = []
@@ -178,6 +179,7 @@ async def sync_worklist_from_fhir(
         return SyncWorklistResponse(
             fetched=result["fetched"],
             created=result["created"],
+            updated=result.get("updated", 0),
             skipped=result["skipped"],
             errors=result["errors"],
             error_details=result.get("error_details", []),

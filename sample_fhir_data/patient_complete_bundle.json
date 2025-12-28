@@ -1697,11 +1697,12 @@
         "intent": "order",
         "category": [
           {
+            "text": "nuclear-medicine",
             "coding": [
               {
                 "system": "http://snomed.info/sct",
                 "code": "363679005",
-                "display": "Imaging"
+                "display": "nuclear-medicine"
               }
             ]
           }

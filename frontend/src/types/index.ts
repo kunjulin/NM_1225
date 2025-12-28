@@ -522,6 +522,7 @@ export interface SyncLogResponse {
 export interface SyncWorklistResponse {
   fetched: number
   created: number
+  updated: number
   skipped: number
   errors: number
   error_details: string[]

@@ -38,8 +38,11 @@ class FHIRClient:
         
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
+                # 確保使用 UTF-8 編碼處理回應
+                headers = {"Accept": "application/fhir+json; charset=utf-8"}
+                
                 if method == "GET":
-                    response = await client.get(url, params=params)
+                    response = await client.get(url, params=params, headers=headers)
                 elif method == "POST":
                     response = await client.post(
                         url, 
@@ -56,6 +59,9 @@ class FHIRClient:
                     raise ValueError(f"Unsupported method: {method}")
                 
                 if response.status_code in [200, 201]:
+                    # 確保使用 UTF-8 編碼解析 JSON
+                    # httpx 預設會處理 UTF-8，但明確指定更安全
+                    response.encoding = "utf-8"
                     return response.json()
                 elif response.status_code == 404:
                     return None

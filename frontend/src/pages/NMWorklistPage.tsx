@@ -104,9 +104,20 @@ export function NMWorklistPage() {
     try {
       apiClient.setAuthHeaders(getAuthHeaders())
       const result = await apiClient.post<SyncWorklistResponse>('/nm/sync-worklist', {})
+      // 建立同步結果訊息
+      const parts: string[] = []
+      if (result.fetched > 0) parts.push(`取得 ${result.fetched} 筆`)
+      if (result.created > 0) parts.push(`新增 ${result.created} 筆`)
+      if (result.updated > 0) parts.push(`更新 ${result.updated} 筆`)
+      if (result.skipped > 0) parts.push(`略過 ${result.skipped} 筆`)
+      
+      const message = parts.length > 0 
+        ? `同步完成：${parts.join('，')}`
+        : '同步完成：無新資料'
+      
       setSnackbar({
         open: true,
-        message: `同步完成：取得 ${result.fetched} 筆，新增 ${result.created} 筆，略過 ${result.skipped} 筆`,
+        message: message,
         severity: result.errors > 0 ? 'warning' : 'success',
       })
       refetch()

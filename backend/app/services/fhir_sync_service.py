@@ -51,6 +51,7 @@ class FHIRSyncService:
         stats = {
             "fetched": 0,
             "created": 0,
+            "updated": 0,
             "skipped": 0,
             "errors": 0,
             "error_details": [],
@@ -65,23 +66,27 @@ class FHIRSyncService:
             )
             
             stats["fetched"] = len(service_requests)
+            logger.info(f"Fetched {stats['fetched']} ServiceRequests from FHIR Server")
             
             for sr in service_requests:
                 try:
                     result = await self._process_service_request(sr)
                     if result == "created":
                         stats["created"] += 1
+                    elif result == "updated":
+                        stats["updated"] += 1
                     else:
                         stats["skipped"] += 1
                 except Exception as e:
-                    logger.error(f"Error processing ServiceRequest: {e}")
+                    logger.error(f"Error processing ServiceRequest: {e}", exc_info=True)
                     stats["errors"] += 1
                     stats["error_details"].append(str(e))
             
             await self.db.commit()
+            logger.info(f"Sync completed: fetched={stats['fetched']}, created={stats['created']}, updated={stats['updated']}, skipped={stats['skipped']}, errors={stats['errors']}")
             
         except Exception as e:
-            logger.error(f"Error syncing ServiceRequests: {e}")
+            logger.error(f"Error syncing ServiceRequests: {e}", exc_info=True)
             stats["errors"] += 1
             stats["error_details"].append(str(e))
         
@@ -134,21 +139,13 @@ class FHIRSyncService:
             service_request: ServiceRequest FHIR 資源
             
         Returns:
-            處理結果 ("created" 或 "skipped")
+            處理結果 ("created", "updated" 或 "skipped")
         """
         sr_id = service_request.get("id")
         if not sr_id:
             raise ValueError("ServiceRequest missing id")
         
         service_request_ref = f"ServiceRequest/{sr_id}"
-        
-        # 檢查是否已存在
-        existing = await self.db.execute(
-            select(OrderCase).where(OrderCase.service_request_ref == service_request_ref)
-        )
-        if existing.scalar_one_or_none():
-            logger.debug(f"ServiceRequest {sr_id} already exists, skipping")
-            return "skipped"
         
         # 取得 Patient 參考
         subject = service_request.get("subject", {})
@@ -157,10 +154,52 @@ class FHIRSyncService:
         if not patient_ref:
             raise ValueError(f"ServiceRequest {sr_id} missing subject reference")
         
-        # 取得 Patient 資訊
+        # 取得 Patient 資訊（確保使用 UTF-8 編碼）
         patient = await self.fhir_client.get_patient(patient_ref)
+        if not patient:
+            logger.warning(f"Failed to fetch patient {patient_ref} from FHIR Server")
         patient_name = self._extract_patient_name(patient) if patient else ""
         patient_id = self._extract_patient_id(patient) if patient else ""
+        
+        logger.info(f"Fetched patient {patient_ref}: name='{patient_name}', id='{patient_id}'")
+        
+        # 檢查是否已存在
+        existing_result = await self.db.execute(
+            select(OrderCase).where(OrderCase.service_request_ref == service_request_ref)
+        )
+        existing_case = existing_result.scalar_one_or_none()
+        
+        if existing_case:
+            # 檢查是否需要更新病人資訊（如果之前是空的或顯示為 "???"）
+            snapshot_data = json.loads(existing_case.snapshot_json or "{}")
+            current_patient_name = snapshot_data.get("patientName", "")
+            
+            logger.info(
+                f"Existing case {existing_case.id}: "
+                f"current_name='{current_patient_name}', "
+                f"new_name='{patient_name}', "
+                f"should_update={bool((not current_patient_name or current_patient_name in ['', '未知', '???', 'Unknown'] or '???' in current_patient_name) and patient_name)}"
+            )
+            
+            # 如果病人姓名為空、未知或包含 "???"，且現在有新的姓名，則更新
+            if (not current_patient_name or 
+                current_patient_name in ["", "未知", "???", "Unknown"] or
+                "???" in current_patient_name) and patient_name:
+                logger.info(f"Updating patient name for existing case {existing_case.id}: '{current_patient_name}' -> '{patient_name}'")
+                
+                # 更新 snapshot
+                snapshot_data["patientName"] = patient_name
+                if patient_id:
+                    snapshot_data["patientId"] = patient_id
+                
+                existing_case.snapshot_json = json.dumps(snapshot_data, ensure_ascii=False)
+                existing_case.updated_at = datetime.now(timezone.utc).isoformat()
+                
+                logger.info(f"Updated OrderCase {existing_case.id} with patient name: {patient_name}")
+                return "updated"
+            else:
+                logger.info(f"ServiceRequest {sr_id} already exists with patient name '{current_patient_name}', skipping update")
+                return "skipped"
         
         # 取得檢查資訊
         code = service_request.get("code", {})

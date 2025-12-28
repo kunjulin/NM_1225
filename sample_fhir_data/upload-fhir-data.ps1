@@ -35,7 +35,20 @@ Write-Host "Uploading FHIR Bundle to THAS..." -ForegroundColor Green
 Write-Host "This may take a few seconds..." -ForegroundColor Yellow
 
 try {
-    $response = Invoke-RestMethod -Uri $fhirServerUrl -Method Post -ContentType "application/fhir+json" -Body $jsonContent -ErrorAction Stop
+    # 確保使用 UTF-8 編碼發送 JSON
+    # 方法：將字串轉換為 UTF-8 位元組陣列，避免 PowerShell 使用系統預設編碼
+    $utf8Bytes = [System.Text.Encoding]::UTF8.GetBytes($jsonContent)
+    
+    # 使用 Invoke-WebRequest 並明確指定 UTF-8 編碼
+    $response = Invoke-WebRequest -Uri $fhirServerUrl `
+        -Method Post `
+        -ContentType "application/fhir+json; charset=utf-8" `
+        -Body $utf8Bytes `
+        -ErrorAction Stop
+    
+    # 解析回應（使用 UTF-8 編碼）
+    $responseContent = $response.Content
+    $response = $responseContent | ConvertFrom-Json
     
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Green
@@ -74,7 +87,8 @@ catch {
         
         try {
             $errorStream = $_.Exception.Response.GetResponseStream()
-            $reader = New-Object System.IO.StreamReader($errorStream)
+            # 使用 UTF-8 編碼讀取錯誤回應
+            $reader = New-Object System.IO.StreamReader($errorStream, [System.Text.Encoding]::UTF8)
             $errorBody = $reader.ReadToEnd()
             Write-Host "Error response: $errorBody" -ForegroundColor Red
         }
