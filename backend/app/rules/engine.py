@@ -187,6 +187,17 @@ class RuleEngine:
         suggested_dose = draft.get("suggestedDose", {})
         dose_value = suggested_dose.get("value")
         
+        # 檢查是否有檢查代碼但缺少草案劑量
+        if exam_code and not dose_value:
+            flags.append(RuleFlag(
+                code="MISSING_DRAFT_DOSE",
+                severity=Severity.FAIL,
+                title="缺少草案劑量",
+                explain="案件已指定檢查項目，但尚未設定草案劑量",
+                recommendation="請設定草案劑量後再進行評估",
+                tags=["dose", "required"]
+            ))
+        
         if dose_value and exam_code:
             # 使用 NA-2024 計算劑量範圍
             dose_calc = self.calculate_na2024_dose(exam_code, weight)
