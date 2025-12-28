@@ -6,8 +6,10 @@
 
 | 檔案名稱 | 說明 |
 |----------|------|
-| `upload-fhir-data.ps1` | PowerShell 上傳腳本（Windows 推薦使用，已修正 UTF-8 編碼） |
-| `upload-patient.ps1` | 單一 Patient 資源上傳腳本（用於測試編碼） |
+| `upload-demo-data.ps1` | **統一上傳腳本（推薦使用）** - 上傳完整的 Demo Patient 資料到 THAS FHIR Server |
+| `check-uploaded-data.ps1` | **檢查腳本（推薦使用）** - 檢查上傳的資料是否成功上傳到 FHIR Server |
+| `upload-fhir-data.ps1` | 完整 Bundle 上傳腳本（已棄用，請使用 upload-demo-data.ps1） |
+| `upload-patient.ps1` | 單一 Patient 資源上傳腳本（僅用於測試編碼，不推薦用於 Demo） |
 | `query-patient.ps1` | Patient 查詢腳本（用於驗證編碼是否正確） |
 | `clear-snapshots.ps1` | 清除 Docker 容器內 APP DB 的所有 snapshot 資料腳本 |
 | `patient_complete_bundle.json` | 完整病人資料 Bundle（包含所有臨床資料） |
@@ -41,32 +43,80 @@ cd sample_fhir_data
 
 ## 上傳方式
 
-### 方式一：使用 PowerShell 腳本（最簡單，Windows 推薦）
+### 方式一：使用統一上傳腳本（推薦）
 
-**上傳完整 Bundle：**
+**上傳完整 Demo 資料（包含所有測試 Patient Information Card 所需的資料）：**
 
 ```powershell
 cd sample_fhir_data
-.\upload-fhir-data.ps1
+.\upload-demo-data.ps1
 ```
 
 腳本會自動：
-- 讀取 `patient_complete_bundle.json`
+- 讀取 `patient_complete_bundle.json`（包含所有需要的資料）
 - 上傳到 THAS FHIR Server（使用 POST）
 - 顯示上傳結果和統計資訊
 
-**上傳單一 Patient 資源：**
+**上傳的資源包含：**
+- **7 個 Patient** (病人基本資料，包含 patient-1001 到 patient-1007)
+- **7 個 ServiceRequest** (核醫檢查申請：exam-001 到 exam-007)
+  - exam-001: 全身 FDG PET/CT (patient-1001)
+  - exam-002: 三相骨骼掃描 (patient-1002)
+  - exam-003: 腎皮質掃描 DMSA (patient-1006)
+  - exam-004: MIBG 心臟交感神經顯像 (patient-1005)
+  - exam-005: 甲狀腺攝取率 (patient-1003)
+  - exam-006: 腎功能掃描 MAG3 (patient-1004)
+  - exam-007: 骨骼掃描 (patient-1007)
+- **15 個 Encounter** (就醫紀錄)
+- **16 個 Condition** (診斷/病史)
+- **10 個 MedicationStatement** (用藥紀錄)
+- **32 個 Observation** (檢驗資料：體重、腎功能、肝功能、甲狀腺、血液等)
+- **4 個 AllergyIntolerance** (過敏史)
+- **2 個 Procedure** (處置紀錄)
+- **2 個 Practitioner** (醫師)
+
+**注意：** `patient_complete_bundle.json` 已經包含了所有測試 Patient Information Card 所需的資料，無需單獨上傳 conditions.json、encounters.json、medications.json、observations_labs.json 等檔案。
+
+### 檢查上傳的資料
+
+**確認資料是否成功上傳：**
+
+```powershell
+cd sample_fhir_data
+.\check-uploaded-data.ps1
+```
+
+腳本會檢查：
+- Patient/patient-1007 是否存在
+- ServiceRequest/exam-007 是否存在
+- 使用 category=nuclear-medicine 過濾的 ServiceRequest 列表
+- Patient/patient-1007 的所有 ServiceRequest
+
+**上傳的資料規格：**
+- **Patient ID**: patient-1007
+- **Patient Name**: 王大明
+- **ServiceRequest ID**: exam-007
+- **檢查**: 骨骼掃描 (Tc-99m MDP)
+- **Category**: 
+  - SNOMED CT Code: `394649004` (Nuclear medicine)
+  - Text: `核子醫學科`
+  - 符合 TW Core IG 規範
+
+如果工作清單中顯示的不是這些資料，請：
+1. 執行檢查腳本確認資料是否已成功上傳
+2. 如果資料不存在，重新執行上傳腳本
+3. 如果資料存在但工作清單中看不到，檢查 ServiceRequest 的 category 是否使用正確的 SNOMED CT 代碼 `394649004`
+
+### 方式二：使用其他腳本（進階使用）
+
+**上傳單一 Patient 資源（僅用於測試編碼）：**
 
 ```powershell
 cd sample_fhir_data
 .\upload-patient.ps1
 ```
 
-腳本會自動：
-- 讀取 `patient_basic.json`
-- 使用 PUT 方法上傳到 `/fhir/Patient/{id}` 端點
-- 確保 UTF-8 編碼正確處理
-- 顯示上傳結果
+此腳本僅上傳 `patient_basic.json`，不包含臨床資料，**不推薦用於 Demo**。
 
 ### 方式二：使用完整 Bundle（推薦）
 
@@ -192,6 +242,51 @@ curl -X PUT "https://thas.mohw.gov.tw/v/r4/fhir/Patient/patient-1007" \
 - 地址等中文欄位是否正常
 - 完整 JSON 回應內容
 
+## TW Core IG 規範
+
+本專案遵循 [TW Core IG (臺灣核心實作指引)](https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition-ServiceRequest-twcore.html) 的規範。
+
+### ServiceRequest Category 規範
+
+根據 TW Core IG 規範，ServiceRequest 的 `category` 欄位應使用標準 SNOMED CT 代碼：
+
+**核子醫學科（Nuclear medicine）**:
+- **SNOMED CT Code**: `394649004`
+- **對應 NHI 代碼**: `84` (核子醫學科)
+- **Display**: `Nuclear medicine`
+- **Text**: `核子醫學科` (建議使用中文)
+
+**ServiceRequest category 範例格式**:
+
+```json
+{
+  "category": [
+    {
+      "coding": [
+        {
+          "system": "http://snomed.info/sct",
+          "code": "394649004",
+          "display": "Nuclear medicine"
+        }
+      ],
+      "text": "核子醫學科"
+    }
+  ]
+}
+```
+
+**參考資料**:
+- [TW Core ServiceRequest Profile](https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition-ServiceRequest-twcore.html)
+- 核子醫學科對應：84 (核子醫學科) = 394649004 (Nuclear medicine)
+
+### 查詢參數支援
+
+根據 TW Core IG，系統支援以下查詢參數：
+- `status`: 狀態過濾（如 `active`）
+- `category`: 類別過濾（如 `nuclear-medicine` 或使用 SNOMED code）
+- `patient`: 病人參考
+- `authored`: 建立日期範圍
+
 ## 注意事項
 
 1. **編碼問題**：所有 JSON 檔案必須使用 UTF-8 編碼儲存
@@ -200,6 +295,7 @@ curl -X PUT "https://thas.mohw.gov.tw/v/r4/fhir/Patient/patient-1007" \
 4. 所有日期時間使用 ISO 8601 格式
 5. LOINC 代碼用於檢驗項目識別
 6. ICD-10 代碼用於診斷碼
+7. **ServiceRequest category** 必須使用標準 SNOMED CT 代碼（核子醫學：394649004）
 
 ## 相關 LOINC 代碼
 

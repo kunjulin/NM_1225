@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     smart_token_endpoint: str = ""
     
     # ServiceRequest 同步設定
-    fhir_service_request_category: str = "nuclear-medicine"  # 核醫 ServiceRequest 過濾條件
+    fhir_service_request_category: str = "394649004"  # 核醫 ServiceRequest 過濾條件 (SNOMED CT code for Nuclear medicine)
     fhir_sync_poll_interval_seconds: float = 60.0  # 背景同步間隔
     
     @property

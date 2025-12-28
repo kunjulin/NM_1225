@@ -26,9 +26,9 @@ async def check_service_requests():
     else:
         print("   未找到任何 ServiceRequest")
     
-    # 2. 查詢使用 category=nuclear-medicine 過濾
-    print("\n2. 查詢 status=active 且 category=nuclear-medicine 的 ServiceRequest:")
-    result2 = await client._request("GET", "ServiceRequest", params={"status": "active", "category": "nuclear-medicine"})
+    # 2. 查詢使用 category=394649004 (SNOMED CT code for Nuclear medicine) 過濾
+    print("\n2. 查詢 status=active 且 category=394649004 的 ServiceRequest:")
+    result2 = await client._request("GET", "ServiceRequest", params={"status": "active", "category": "394649004"})
     if result2 and "entry" in result2:
         print(f"   找到 {len(result2['entry'])} 個 ServiceRequest")
         for entry in result2["entry"]:

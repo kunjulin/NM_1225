@@ -106,7 +106,7 @@ class FHIRSyncService:
             category: 類別過濾（用於識別核醫相關的 ServiceRequest）
             
         Returns:
-            ServiceRequest 資源列表
+            ServiceRequest 資源列表（已過濾符合 category 條件的）
         """
         params = {}
         
@@ -116,7 +116,8 @@ class FHIRSyncService:
         if last_updated:
             params["_lastUpdated"] = f"gt{last_updated}"
         
-        # 嘗試根據類別過濾（如果 FHIR Server 支援）
+        # 使用 category 查詢參數（THAS FHIR Server 支援 category=394649004）
+        # 使用 SNOMED CT code 394649004 (Nuclear medicine) 符合 TW Core IG 規範
         if category:
             params["category"] = category
         
@@ -124,7 +125,9 @@ class FHIRSyncService:
             result = await self.fhir_client._request("GET", "ServiceRequest", params=params)
             
             if result and "entry" in result:
-                return [e.get("resource", {}) for e in result["entry"]]
+                service_requests = [e.get("resource", {}) for e in result["entry"]]
+                logger.info(f"Fetched {len(service_requests)} ServiceRequests with category='{category}' from FHIR Server")
+                return service_requests
             
             return []
             

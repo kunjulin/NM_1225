@@ -1,0 +1,140 @@
+{
+  "info": {
+    "name": "FHIR ServiceRequest Queries",
+    "description": "Postman collection for querying and comparing FHIR ServiceRequest data",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Get ServiceRequest exam-007",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/fhir+json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "https://thas.mohw.gov.tw/v/r4/fhir/ServiceRequest/exam-007",
+          "protocol": "https",
+          "host": ["thas", "mohw", "gov", "tw"],
+          "path": ["v", "r4", "fhir", "ServiceRequest", "exam-007"]
+        },
+        "description": "查詢您上傳的 ServiceRequest (exam-007)，檢查資料是否存在以及 category 格式"
+      }
+    },
+    {
+      "name": "Search ServiceRequest by category=nuclear-medicine",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/fhir+json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "https://thas.mohw.gov.tw/v/r4/fhir/ServiceRequest?status=active&category=nuclear-medicine",
+          "protocol": "https",
+          "host": ["thas", "mohw", "gov", "tw"],
+          "path": ["v", "r4", "fhir", "ServiceRequest"],
+          "query": [
+            {
+              "key": "status",
+              "value": "active",
+              "description": "只查詢 active 狀態的 ServiceRequest"
+            },
+            {
+              "key": "category",
+              "value": "nuclear-medicine",
+              "description": "系統同步時使用的過濾條件，檢查 exam-007 是否在此結果中"
+            }
+          ]
+        },
+        "description": "查詢所有 category=nuclear-medicine 的 ServiceRequest。這是系統同步時使用的查詢，檢查 exam-007 是否會出現在結果中。"
+      }
+    },
+    {
+      "name": "Search all active ServiceRequest",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/fhir+json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "https://thas.mohw.gov.tw/v/r4/fhir/ServiceRequest?status=active",
+          "protocol": "https",
+          "host": ["thas", "mohw", "gov", "tw"],
+          "path": ["v", "r4", "fhir", "ServiceRequest"],
+          "query": [
+            {
+              "key": "status",
+              "value": "active",
+              "description": "只查詢 active 狀態的 ServiceRequest"
+            }
+          ]
+        },
+        "description": "查詢所有 active 的 ServiceRequest（不篩選 category），用於查看所有資料並比較格式"
+      }
+    },
+    {
+      "name": "Search ServiceRequest by Patient patient-1007",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/fhir+json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "https://thas.mohw.gov.tw/v/r4/fhir/ServiceRequest?status=active&subject=Patient/patient-1007",
+          "protocol": "https",
+          "host": ["thas", "mohw", "gov", "tw"],
+          "path": ["v", "r4", "fhir", "ServiceRequest"],
+          "query": [
+            {
+              "key": "status",
+              "value": "active"
+            },
+            {
+              "key": "subject",
+              "value": "Patient/patient-1007",
+              "description": "查詢特定病人的所有 ServiceRequest"
+            }
+          ]
+        },
+        "description": "查詢 patient-1007 的所有 ServiceRequest，確認資料是否已成功上傳"
+      }
+    },
+    {
+      "name": "Get Patient patient-1007",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/fhir+json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "https://thas.mohw.gov.tw/v/r4/fhir/Patient/patient-1007",
+          "protocol": "https",
+          "host": ["thas", "mohw", "gov", "tw"],
+          "path": ["v", "r4", "fhir", "Patient", "patient-1007"]
+        },
+        "description": "查詢 Patient 資源，確認基本資料是否已成功上傳"
+      }
+    }
+  ]
+}
+

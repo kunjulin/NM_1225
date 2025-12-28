@@ -5,14 +5,14 @@
   "intent": "order",
   "category": [
     {
-      "text": "nuclear-medicine",
       "coding": [
         {
           "system": "http://snomed.info/sct",
-          "code": "363679005",
-          "display": "nuclear-medicine"
+          "code": "394649004",
+          "display": "Nuclear medicine"
         }
-      ]
+      ],
+      "text": "核子醫學科"
     }
   ],
   "code": {
@@ -52,4 +52,3 @@
     }
   ]
 }
-

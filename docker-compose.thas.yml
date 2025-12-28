@@ -45,7 +45,7 @@ services:
       - NM_FHIR_TIMEOUT_SECONDS=30.0
       
       # ServiceRequest 同步設定
-      - NM_FHIR_SERVICE_REQUEST_CATEGORY=nuclear-medicine
+      - NM_FHIR_SERVICE_REQUEST_CATEGORY=394649004
       - NM_FHIR_SYNC_POLL_INTERVAL_SECONDS=60.0
       
       # 資料庫 (存放在 /app/data 目錄以便持久化)
