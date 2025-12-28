@@ -51,7 +51,25 @@ import {
   Person as PersonIcon,
   Reply as ReplyIcon,
   LocalPharmacy as PharmacyIcon,
+  ExpandMore as ExpandMoreIcon,
+  LocalHospital as HospitalIcon,
+  Biotech as LabIcon,
+  Medication as MedicationIcon,
+  MedicalServices as ProcedureIcon,
+  HealthAndSafety as AllergyIcon,
+  Assignment as DiagnosisIcon,
 } from '@mui/icons-material'
+import Accordion from '@mui/material/Accordion'
+import AccordionSummary from '@mui/material/AccordionSummary'
+import AccordionDetails from '@mui/material/AccordionDetails'
+import Tabs from '@mui/material/Tabs'
+import Tab from '@mui/material/Tab'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
 import { apiClient } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import {
@@ -61,6 +79,12 @@ import {
   ResponseAction,
   Severity,
   DraftData,
+  EncounterInfo,
+  ConditionInfo,
+  MedicationInfo,
+  ProcedureInfo,
+  LabResultInfo,
+  AllergyInfo,
 } from '../types'
 import { severityColors, statusColors } from '../theme'
 
@@ -270,12 +294,14 @@ export function CaseDetailPage() {
         unit: 'kg',
       })
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       setSnackbar({ open: true, message: '體重已儲存，CDS 已重新評估', severity: 'success' })
       setManualWeight('')
-      // 同時更新 snapshot 和工作清單
-      queryClient.invalidateQueries({ queryKey: ['case-snapshot', caseId] })
-      queryClient.invalidateQueries({ queryKey: ['nm-worklist'] })
+      // 同時更新 snapshot 和工作清單，並強制重新載入
+      await queryClient.invalidateQueries({ queryKey: ['case-snapshot', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['nm-worklist'] })
+      // 強制重新載入 snapshot 以取得最新的 CDS 評估結果
+      refetch()
     },
     onError: (error) => {
       setSnackbar({ open: true, message: `儲存失敗: ${(error as Error).message}`, severity: 'error' })
@@ -373,16 +399,56 @@ export function CaseDetailPage() {
                 病人資訊
               </Typography>
               <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="text.secondary">病人參考</Typography>
-                  <Typography>{snapshot.patientRef}</Typography>
+                {/* 病人資訊區塊 */}
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    病人資訊
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="text.secondary">病人參考</Typography>
+                      <Typography>{snapshot.patientRef}</Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="text.secondary">體重</Typography>
+                      <Typography>
+                        {snapshot.doseCalculation?.weightUsed 
+                          ? `${snapshot.doseCalculation.weightUsed} kg`
+                          : snapshot.snapshot.weightKg 
+                          ? `${snapshot.snapshot.weightKg} kg`
+                          : '未提供'}
+                      </Typography>
+                    </Grid>
+                  </Grid>
                 </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="text.secondary">ServiceRequest</Typography>
-                  <Typography>{snapshot.serviceRequestRef}</Typography>
+                
+                {/* 臨床醫囑資訊區塊 */}
+                <Grid item xs={12}>
+                  <Divider sx={{ my: 1 }} />
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    臨床醫囑資訊
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="text.secondary">ServiceRequest</Typography>
+                      <Typography>{snapshot.serviceRequestRef}</Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="text.secondary">檢查項目</Typography>
+                      <Typography>
+                        {snapshot.snapshot.examDisplay 
+                          || snapshot.snapshot.examCode 
+                          || snapshot.draft?.examCode 
+                          || '未指定'}
+                      </Typography>
+                    </Grid>
+                  </Grid>
                 </Grid>
+                
+                {/* 案件狀態 */}
                 {snapshot.status && (
-                  <Grid item xs={6}>
+                  <Grid item xs={12}>
+                    <Divider sx={{ my: 1 }} />
                     <Typography variant="body2" color="text.secondary">案件狀態</Typography>
                     <Chip 
                       label={snapshot.status} 
@@ -397,6 +463,9 @@ export function CaseDetailPage() {
               </Grid>
             </CardContent>
           </Card>
+
+          {/* 臨床資料展示區塊 */}
+          <ClinicalDataPanel snapshot={snapshot} />
 
           {/* 藥師意見與審查歷程 - 只在有退回相關事件時顯示 */}
           {snapshot.reviewEvents && snapshot.reviewEvents.length > 0 && (
@@ -780,38 +849,68 @@ export function CaseDetailPage() {
                 )}
                 
                 <Grid container spacing={2}>
-                  {/* 體重輸入（如果缺少體重） */}
-                  {snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT') && (
-                    <Grid item xs={12}>
-                      <Paper variant="outlined" sx={{ p: 2, bgcolor: 'error.light' }}>
-                        <Typography variant="body2" fontWeight={600} color="error.dark" gutterBottom>
-                          缺少體重資料
-                        </Typography>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <TextField
-                            label="輸入體重 (kg)"
-                            type="number"
-                            size="small"
-                            value={manualWeight}
-                            onChange={(e) => setManualWeight(e.target.value)}
-                            sx={{ width: 150 }}
-                          />
-                          <Button
-                            variant="contained"
-                            color="error"
-                            size="small"
-                            onClick={() => {
-                              const w = parseFloat(manualWeight)
-                              if (w > 0) saveManualWeightMutation.mutate(w)
-                            }}
-                            disabled={!manualWeight || saveManualWeightMutation.isPending}
+                  {/* 體重輸入（缺少體重或使用本地資料時顯示） */}
+                  {(() => {
+                    const hasMissingWeight = snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT')
+                    const currentWeight = snapshot.doseCalculation?.weightUsed || snapshot.snapshot.weightKg
+                    const hasLocalWeight = snapshot.candidateFacts.some(
+                      f => f.factType === 'WEIGHT_KG' && (f.sourceType === 'MANUAL' || f.sourceType === 'AUTOFILL')
+                    )
+                    // 如果有體重資料或缺少體重，都顯示輸入欄位
+                    const shouldShowWeightInput = hasMissingWeight || hasLocalWeight || currentWeight
+                    
+                    if (!shouldShowWeightInput) return null
+                    
+                    return (
+                      <Grid item xs={12}>
+                        <Paper 
+                          variant="outlined" 
+                          sx={{ 
+                            p: 2, 
+                            bgcolor: hasMissingWeight ? 'error.light' : 'primary.light',
+                            borderColor: hasMissingWeight ? 'error.main' : 'primary.main',
+                          }}
+                        >
+                          <Typography 
+                            variant="body2" 
+                            fontWeight={600} 
+                            color={hasMissingWeight ? 'error.dark' : 'primary.dark'} 
+                            gutterBottom
                           >
-                            儲存體重
-                          </Button>
-                        </Stack>
-                      </Paper>
-                    </Grid>
-                  )}
+                            {hasMissingWeight ? '缺少體重資料' : '體重資料（可修改）'}
+                          </Typography>
+                          {currentWeight && !hasMissingWeight && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                              目前體重: {currentWeight} kg
+                            </Typography>
+                          )}
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <TextField
+                              label="輸入體重 (kg)"
+                              type="number"
+                              size="small"
+                              value={manualWeight}
+                              onChange={(e) => setManualWeight(e.target.value)}
+                              sx={{ width: 150 }}
+                              placeholder={currentWeight ? currentWeight.toString() : ''}
+                            />
+                            <Button
+                              variant="contained"
+                              color={hasMissingWeight ? 'error' : 'primary'}
+                              size="small"
+                              onClick={() => {
+                                const w = parseFloat(manualWeight)
+                                if (w > 0) saveManualWeightMutation.mutate(w)
+                              }}
+                              disabled={!manualWeight || saveManualWeightMutation.isPending}
+                            >
+                              {hasMissingWeight ? '儲存體重' : '更新體重'}
+                            </Button>
+                          </Stack>
+                        </Paper>
+                      </Grid>
+                    )
+                  })()}
                   
                   {/* Override 備註 */}
                   <Grid item xs={12}>
@@ -1254,6 +1353,547 @@ export function CaseDetailPage() {
         </Alert>
       </Snackbar>
     </Box>
+  )
+}
+
+// === 臨床資料展示元件 ===
+
+interface ClinicalDataPanelProps {
+  snapshot: PatientSnapshot
+}
+
+/** 臨床資料展示面板 */
+function ClinicalDataPanel({ snapshot }: ClinicalDataPanelProps) {
+  const [clinicalTab, setClinicalTab] = useState(0)
+  
+  const { encounters = [], conditionList = [], medications = [], procedures = [], labResults, allergyList = [] } = snapshot.snapshot
+  
+  // 檢查是否有任何臨床資料
+  const hasEncounters = encounters.length > 0
+  const hasConditions = conditionList.length > 0
+  const hasMedications = medications.length > 0
+  const hasProcedures = procedures.length > 0
+  const hasLabResults = labResults && (
+    labResults.renal.length > 0 ||
+    labResults.hepatic.length > 0 ||
+    labResults.thyroid.length > 0 ||
+    labResults.hematology.length > 0
+  )
+  const hasAllergies = allergyList.length > 0
+  
+  const hasClinicalData = hasEncounters || hasConditions || hasMedications || hasProcedures || hasLabResults || hasAllergies
+  
+  // Debug: 顯示資料狀態（開發時可用）
+  // console.log('ClinicalDataPanel Debug:', {
+  //   hasEncounters, hasConditions, hasMedications, hasProcedures, hasLabResults, hasAllergies,
+  //   encounters: encounters.length, conditionList: conditionList.length,
+  //   medications: medications.length, procedures: procedures.length,
+  //   labResults: labResults ? 'exists' : 'null', allergyList: allergyList.length
+  // })
+  
+  if (!hasClinicalData) {
+    // 即使沒有資料，也顯示一個提示訊息，方便調試
+    return (
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Alert severity="info">
+            目前沒有可用的臨床資料。請確認已上傳 FHIR 測試資料，且案件的 Patient ID 與上傳的資料一致。
+          </Alert>
+        </CardContent>
+      </Card>
+    )
+  }
+  
+  return (
+    <>
+      {/* 臨床紀錄 (就醫、診斷、用藥、處置) */}
+      {(hasEncounters || hasConditions || hasMedications || hasProcedures) && (
+        <Accordion defaultExpanded sx={{ mb: 2 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <HospitalIcon color="primary" />
+              <Typography variant="h6">臨床紀錄</Typography>
+              <Chip 
+                label={encounters.length + conditionList.length + medications.length + procedures.length} 
+                size="small" 
+                color="primary" 
+                variant="outlined"
+              />
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Tabs 
+              value={clinicalTab} 
+              onChange={(_, newValue) => setClinicalTab(newValue)}
+              sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
+            >
+              <Tab 
+                icon={<HospitalIcon fontSize="small" />} 
+                iconPosition="start" 
+                label={`就醫 (${encounters.length})`} 
+                disabled={!hasEncounters}
+              />
+              <Tab 
+                icon={<DiagnosisIcon fontSize="small" />} 
+                iconPosition="start" 
+                label={`診斷 (${conditionList.length})`}
+                disabled={!hasConditions}
+              />
+              <Tab 
+                icon={<MedicationIcon fontSize="small" />} 
+                iconPosition="start" 
+                label={`用藥 (${medications.length})`}
+                disabled={!hasMedications}
+              />
+              <Tab 
+                icon={<ProcedureIcon fontSize="small" />} 
+                iconPosition="start" 
+                label={`處置 (${procedures.length})`}
+                disabled={!hasProcedures}
+              />
+            </Tabs>
+            
+            {/* 就醫紀錄 */}
+            {clinicalTab === 0 && (
+              <EncounterList encounters={encounters} />
+            )}
+            
+            {/* 診斷/病史 */}
+            {clinicalTab === 1 && (
+              <ConditionList conditions={conditionList} />
+            )}
+            
+            {/* 用藥紀錄 */}
+            {clinicalTab === 2 && (
+              <MedicationList medications={medications} />
+            )}
+            
+            {/* 處置紀錄 */}
+            {clinicalTab === 3 && (
+              <ProcedureList procedures={procedures} />
+            )}
+          </AccordionDetails>
+        </Accordion>
+      )}
+      
+      {/* 重要檢驗資料 */}
+      {hasLabResults && (
+        <Accordion defaultExpanded sx={{ mb: 2 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <LabIcon color="secondary" />
+              <Typography variant="h6">重要檢驗資料</Typography>
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails>
+            <LabResultsPanel labResults={labResults!} />
+          </AccordionDetails>
+        </Accordion>
+      )}
+      
+      {/* 過敏史 */}
+      {hasAllergies && (
+        <Accordion defaultExpanded sx={{ mb: 2 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <AllergyIcon color="error" />
+              <Typography variant="h6">過敏史</Typography>
+              <Chip label={allergyList.length} size="small" color="error" variant="outlined" />
+            </Stack>
+          </AccordionSummary>
+          <AccordionDetails>
+            <AllergyList allergies={allergyList} />
+          </AccordionDetails>
+        </Accordion>
+      )}
+    </>
+  )
+}
+
+/** 就醫紀錄列表 */
+function EncounterList({ encounters }: { encounters: EncounterInfo[] }) {
+  if (encounters.length === 0) {
+    return <Typography color="text.secondary">無就醫紀錄</Typography>
+  }
+  
+  return (
+    <TableContainer component={Paper} variant="outlined">
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>類別</TableCell>
+            <TableCell>日期</TableCell>
+            <TableCell>就醫原因</TableCell>
+            <TableCell>地點</TableCell>
+            <TableCell>狀態</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {encounters.map((enc) => (
+            <TableRow key={enc.id}>
+              <TableCell>
+                <Chip 
+                  label={enc.classDisplay || enc.classCode || '-'} 
+                  size="small"
+                  color={enc.classCode === 'EMER' ? 'error' : enc.classCode === 'IMP' ? 'warning' : 'default'}
+                />
+              </TableCell>
+              <TableCell>
+                {enc.periodStart ? new Date(enc.periodStart).toLocaleDateString('zh-TW') : '-'}
+              </TableCell>
+              <TableCell>{enc.reasonDisplay || enc.typeDisplay || '-'}</TableCell>
+              <TableCell>{enc.location || '-'}</TableCell>
+              <TableCell>
+                <Chip label={enc.status || '-'} size="small" variant="outlined" />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  )
+}
+
+/** 診斷/病史列表 */
+function ConditionList({ conditions }: { conditions: ConditionInfo[] }) {
+  if (conditions.length === 0) {
+    return <Typography color="text.secondary">無診斷記錄</Typography>
+  }
+  
+  return (
+    <TableContainer component={Paper} variant="outlined">
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>診斷碼</TableCell>
+            <TableCell>診斷名稱</TableCell>
+            <TableCell>狀態</TableCell>
+            <TableCell>發病日期</TableCell>
+            <TableCell>嚴重程度</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {conditions.map((cond) => (
+            <TableRow key={cond.id}>
+              <TableCell>
+                <Typography variant="body2" fontFamily="monospace">
+                  {cond.code || '-'}
+                </Typography>
+              </TableCell>
+              <TableCell>{cond.display || '-'}</TableCell>
+              <TableCell>
+                <Chip 
+                  label={cond.clinicalStatus || '-'} 
+                  size="small"
+                  color={cond.clinicalStatus === 'active' ? 'warning' : 'default'}
+                  variant="outlined"
+                />
+              </TableCell>
+              <TableCell>
+                {cond.onsetDateTime ? new Date(cond.onsetDateTime).toLocaleDateString('zh-TW') : '-'}
+              </TableCell>
+              <TableCell>{cond.severity || '-'}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  )
+}
+
+/** 用藥紀錄列表 */
+function MedicationList({ medications }: { medications: MedicationInfo[] }) {
+  if (medications.length === 0) {
+    return <Typography color="text.secondary">無用藥紀錄</Typography>
+  }
+  
+  return (
+    <TableContainer component={Paper} variant="outlined">
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>藥物名稱</TableCell>
+            <TableCell>劑量</TableCell>
+            <TableCell>給藥途徑</TableCell>
+            <TableCell>狀態</TableCell>
+            <TableCell>用藥原因</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {medications.map((med) => (
+            <TableRow key={med.id}>
+              <TableCell>
+                <Typography variant="body2" fontWeight={500}>
+                  {med.medicationDisplay || med.medicationCode || '-'}
+                </Typography>
+              </TableCell>
+              <TableCell>{med.dosageText || '-'}</TableCell>
+              <TableCell>{med.route || '-'}</TableCell>
+              <TableCell>
+                <Chip 
+                  label={med.status || '-'} 
+                  size="small"
+                  color={med.status === 'active' ? 'success' : 'default'}
+                  variant="outlined"
+                />
+              </TableCell>
+              <TableCell>{med.reasonDisplay || '-'}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  )
+}
+
+/** 處置紀錄列表 */
+function ProcedureList({ procedures }: { procedures: ProcedureInfo[] }) {
+  if (procedures.length === 0) {
+    return <Typography color="text.secondary">無處置紀錄</Typography>
+  }
+  
+  return (
+    <TableContainer component={Paper} variant="outlined">
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>處置代碼</TableCell>
+            <TableCell>處置名稱</TableCell>
+            <TableCell>執行日期</TableCell>
+            <TableCell>部位</TableCell>
+            <TableCell>結果</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {procedures.map((proc) => (
+            <TableRow key={proc.id}>
+              <TableCell>
+                <Typography variant="body2" fontFamily="monospace">
+                  {proc.code || '-'}
+                </Typography>
+              </TableCell>
+              <TableCell>{proc.display || '-'}</TableCell>
+              <TableCell>
+                {proc.performedDateTime 
+                  ? new Date(proc.performedDateTime).toLocaleDateString('zh-TW')
+                  : proc.performedPeriodStart 
+                    ? new Date(proc.performedPeriodStart).toLocaleDateString('zh-TW')
+                    : '-'
+                }
+              </TableCell>
+              <TableCell>{proc.bodySite || '-'}</TableCell>
+              <TableCell>{proc.outcome || '-'}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  )
+}
+
+/** 檢驗結果展示面板 */
+function LabResultsPanel({ labResults }: { labResults: NonNullable<PatientSnapshot['snapshot']['labResults']> }) {
+  const categories = [
+    { key: 'renal', label: '腎功能', data: labResults.renal, color: '#1976d2' },
+    { key: 'hepatic', label: '肝功能', data: labResults.hepatic, color: '#ed6c02' },
+    { key: 'thyroid', label: '甲狀腺功能', data: labResults.thyroid, color: '#9c27b0' },
+    { key: 'hematology', label: '血液檢驗', data: labResults.hematology, color: '#d32f2f' },
+  ].filter(cat => cat.data.length > 0)
+  
+  if (categories.length === 0) {
+    return <Typography color="text.secondary">無檢驗資料</Typography>
+  }
+  
+  return (
+    <Grid container spacing={2}>
+      {categories.map((category) => (
+        <Grid item xs={12} md={6} key={category.key}>
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Typography 
+              variant="subtitle1" 
+              fontWeight={600} 
+              gutterBottom
+              sx={{ color: category.color }}
+            >
+              {category.label}
+            </Typography>
+            <Stack spacing={1}>
+              {category.data.map((lab: LabResultInfo) => (
+                <LabResultRow key={lab.id} lab={lab} />
+              ))}
+            </Stack>
+          </Paper>
+        </Grid>
+      ))}
+    </Grid>
+  )
+}
+
+/** 單一檢驗結果行 */
+function LabResultRow({ lab }: { lab: LabResultInfo }) {
+  const hasReferenceRange = lab.referenceRangeLow !== undefined || lab.referenceRangeHigh !== undefined
+  const referenceText = hasReferenceRange
+    ? `${lab.referenceRangeLow ?? '-'} - ${lab.referenceRangeHigh ?? '-'}`
+    : lab.referenceRangeText || ''
+  
+  return (
+    <Box 
+      sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        p: 1,
+        borderRadius: 1,
+        bgcolor: lab.isAbnormal ? 'error.light' : 'grey.50',
+      }}
+    >
+      <Box>
+        <Typography variant="body2" fontWeight={500}>
+          {lab.codeDisplay || lab.code}
+        </Typography>
+        {referenceText && (
+          <Typography variant="caption" color="text.secondary">
+            參考範圍: {referenceText}
+          </Typography>
+        )}
+      </Box>
+      <Box textAlign="right">
+        <Stack direction="row" alignItems="center" spacing={0.5}>
+          <Typography 
+            variant="body1" 
+            fontWeight={600}
+            color={lab.isAbnormal ? 'error.main' : 'text.primary'}
+          >
+            {lab.value ?? lab.valueString ?? '-'}
+          </Typography>
+          {lab.unit && (
+            <Typography variant="body2" color="text.secondary">
+              {lab.unit}
+            </Typography>
+          )}
+          {lab.interpretation && lab.interpretation !== 'N' && (
+            <Chip 
+              label={lab.interpretation} 
+              size="small" 
+              color={lab.isAbnormal ? 'error' : 'default'}
+            />
+          )}
+        </Stack>
+        {lab.effectiveDateTime && (
+          <Typography variant="caption" color="text.secondary">
+            {new Date(lab.effectiveDateTime).toLocaleDateString('zh-TW')}
+          </Typography>
+        )}
+      </Box>
+    </Box>
+  )
+}
+
+/** 過敏史列表 */
+function AllergyList({ allergies }: { allergies: AllergyInfo[] }) {
+  if (allergies.length === 0) {
+    return <Typography color="text.secondary">無過敏記錄 (NKDA)</Typography>
+  }
+  
+  const getCriticalityColor = (criticality?: string) => {
+    switch (criticality) {
+      case 'high': return 'error'
+      case 'low': return 'warning'
+      default: return 'default'
+    }
+  }
+  
+  const getCriticalityLabel = (criticality?: string) => {
+    switch (criticality) {
+      case 'high': return '高危'
+      case 'low': return '低危'
+      case 'unable-to-assess': return '無法評估'
+      default: return ''
+    }
+  }
+  
+  return (
+    <Stack spacing={2}>
+      {allergies.map((allergy) => (
+        <Paper 
+          key={allergy.id}
+          variant="outlined"
+          sx={{ 
+            p: 2,
+            borderColor: allergy.criticality === 'high' ? 'error.main' : 'divider',
+            borderWidth: allergy.criticality === 'high' ? 2 : 1,
+          }}
+        >
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+            <Box>
+              <Stack direction="row" alignItems="center" spacing={1} mb={1}>
+                <AllergyIcon 
+                  fontSize="small" 
+                  color={allergy.criticality === 'high' ? 'error' : 'warning'} 
+                />
+                <Typography variant="subtitle1" fontWeight={600}>
+                  {allergy.display || allergy.code || '未知過敏原'}
+                </Typography>
+                {allergy.criticality && (
+                  <Chip 
+                    label={getCriticalityLabel(allergy.criticality)}
+                    size="small"
+                    color={getCriticalityColor(allergy.criticality) as 'error' | 'warning' | 'default'}
+                  />
+                )}
+                {allergy.category && (
+                  <Chip 
+                    label={allergy.category === 'medication' ? '藥物' : 
+                           allergy.category === 'food' ? '食物' :
+                           allergy.category === 'environment' ? '環境' : allergy.category}
+                    size="small"
+                    variant="outlined"
+                  />
+                )}
+              </Stack>
+              
+              {/* 反應症狀 */}
+              {allergy.reactions.length > 0 && (
+                <Box mt={1}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    反應症狀:
+                  </Typography>
+                  <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                    {allergy.reactions.map((reaction, idx) => (
+                      <Box key={idx}>
+                        {reaction.manifestations.map((m, mIdx) => (
+                          <Chip 
+                            key={mIdx}
+                            label={m.display || m.code}
+                            size="small"
+                            color={reaction.severity === 'severe' ? 'error' : 'default'}
+                            sx={{ mr: 0.5, mb: 0.5 }}
+                          />
+                        ))}
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+            </Box>
+            
+            <Box textAlign="right">
+              <Chip 
+                label={allergy.clinicalStatus || 'active'}
+                size="small"
+                color={allergy.clinicalStatus === 'active' ? 'error' : 'default'}
+                variant="outlined"
+              />
+              {allergy.recordedDate && (
+                <Typography variant="caption" display="block" color="text.secondary" mt={0.5}>
+                  記錄於 {new Date(allergy.recordedDate).toLocaleDateString('zh-TW')}
+                </Typography>
+              )}
+            </Box>
+          </Stack>
+        </Paper>
+      ))}
+    </Stack>
   )
 }
 

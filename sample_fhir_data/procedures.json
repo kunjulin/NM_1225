@@ -1,0 +1,95 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Procedure",
+        "id": "procedure-001",
+        "status": "completed",
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "241620005",
+              "display": "Ultrasound scan of thyroid"
+            }
+          ],
+          "text": "甲狀腺超音波"
+        },
+        "subject": {
+          "reference": "Patient/patient-1007",
+          "display": "王大明"
+        },
+        "performedDateTime": "2024-12-15T10:00:00+08:00",
+        "bodySite": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "69748006",
+                "display": "Thyroid gland structure"
+              }
+            ],
+            "text": "甲狀腺"
+          }
+        ],
+        "outcome": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "385669000",
+              "display": "Successful"
+            }
+          ],
+          "text": "發現左側甲狀腺結節 1.5cm"
+        }
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Procedure",
+        "id": "procedure-002",
+        "status": "completed",
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "77477000",
+              "display": "Bone scan"
+            }
+          ],
+          "text": "骨骼掃描 (Tc-99m MDP)"
+        },
+        "subject": {
+          "reference": "Patient/patient-1007",
+          "display": "王大明"
+        },
+        "performedDateTime": "2024-11-20T14:00:00+08:00",
+        "bodySite": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "113192009",
+                "display": "Bone structure of skeleton"
+              }
+            ],
+            "text": "全身骨骼"
+          }
+        ],
+        "outcome": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "385669000",
+              "display": "Successful"
+            }
+          ],
+          "text": "骨骼代謝活性正常，無明顯異常熱點"
+        }
+      }
+    }
+  ]
+}
+

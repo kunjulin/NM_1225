@@ -100,11 +100,12 @@ async def get_current_user(
         )
         user = result.scalar_one_or_none()
         
-        # 特殊處理：預設管理員帳號 (admin) 允許直接登入（用於首次設定）
-        if not user and x_subject == "admin":
+        # 特殊處理：預設管理員帳號 (admin 或 admin123) 允許直接登入（用於首次設定）
+        admin_subjects = ["admin", "admin123"]
+        if not user and x_subject in admin_subjects:
             # 檢查是否有預設管理員，如果沒有則建立
             admin_result = await db.execute(
-                select(User).where(User.subject == "admin")
+                select(User).where(User.subject == x_subject)
             )
             admin_user = admin_result.scalar_one_or_none()
             
@@ -115,7 +116,7 @@ async def get_current_user(
                 now = datetime.now(timezone.utc).isoformat()
                 admin_user = User(
                     id=str(uuid.uuid4()),
-                    subject="admin",
+                    subject=x_subject,
                     practitioner_ref=None,
                     display_name="系統管理員",
                     email=None,

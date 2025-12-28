@@ -184,6 +184,200 @@ class FHIRClient:
             return [e.get("resource", {}) for e in result["entry"]]
         return []
     
+    # === Encounter (就醫紀錄) ===
+    
+    async def get_encounters(self, patient_ref: str, count: int = 10) -> list[dict]:
+        """取得病人就醫紀錄
+        
+        Args:
+            patient_ref: 病人參考 (e.g., "Patient/123")
+            count: 最多取回筆數
+        
+        Returns:
+            就醫紀錄列表，依日期降序排列
+        """
+        patient_id = patient_ref.replace("Patient/", "")
+        
+        result = await self._request(
+            "GET",
+            "Encounter",
+            params={
+                "patient": patient_id,
+                "_sort": "-date",
+                "_count": str(count)
+            }
+        )
+        
+        if result and "entry" in result:
+            return [e.get("resource", {}) for e in result["entry"]]
+        return []
+    
+    # === Condition (診斷/病史) ===
+    
+    async def get_conditions(self, patient_ref: str) -> list[dict]:
+        """取得病人診斷病史
+        
+        Args:
+            patient_ref: 病人參考
+        
+        Returns:
+            診斷/病史列表
+        """
+        patient_id = patient_ref.replace("Patient/", "")
+        
+        result = await self._request(
+            "GET",
+            "Condition",
+            params={
+                "patient": patient_id,
+                "_sort": "-onset-date"
+            }
+        )
+        
+        if result and "entry" in result:
+            return [e.get("resource", {}) for e in result["entry"]]
+        return []
+    
+    # === MedicationStatement (用藥紀錄) ===
+    
+    async def get_medications(self, patient_ref: str) -> list[dict]:
+        """取得病人目前用藥紀錄
+        
+        Args:
+            patient_ref: 病人參考
+        
+        Returns:
+            用藥紀錄列表
+        """
+        patient_id = patient_ref.replace("Patient/", "")
+        
+        result = await self._request(
+            "GET",
+            "MedicationStatement",
+            params={
+                "patient": patient_id,
+                "status": "active"
+            }
+        )
+        
+        if result and "entry" in result:
+            return [e.get("resource", {}) for e in result["entry"]]
+        return []
+    
+    # === Procedure (處置紀錄) ===
+    
+    async def get_procedures(self, patient_ref: str, count: int = 10) -> list[dict]:
+        """取得病人處置紀錄
+        
+        Args:
+            patient_ref: 病人參考
+            count: 最多取回筆數
+        
+        Returns:
+            處置紀錄列表
+        """
+        patient_id = patient_ref.replace("Patient/", "")
+        
+        result = await self._request(
+            "GET",
+            "Procedure",
+            params={
+                "patient": patient_id,
+                "_sort": "-date",
+                "_count": str(count)
+            }
+        )
+        
+        if result and "entry" in result:
+            return [e.get("resource", {}) for e in result["entry"]]
+        return []
+    
+    # === Lab Observations (檢驗資料) ===
+    
+    async def get_lab_observations(
+        self, 
+        patient_ref: str,
+        category: str = "laboratory",
+        count: int = 50
+    ) -> list[dict]:
+        """取得病人檢驗資料
+        
+        Args:
+            patient_ref: 病人參考
+            category: 類別 (laboratory, vital-signs 等)
+            count: 最多取回筆數
+        
+        Returns:
+            檢驗資料列表
+        """
+        patient_id = patient_ref.replace("Patient/", "")
+        
+        result = await self._request(
+            "GET",
+            "Observation",
+            params={
+                "patient": patient_id,
+                "category": category,
+                "_sort": "-date",
+                "_count": str(count)
+            }
+        )
+        
+        if result and "entry" in result:
+            return [e.get("resource", {}) for e in result["entry"]]
+        return []
+    
+    async def get_lab_by_codes(
+        self, 
+        patient_ref: str, 
+        loinc_codes: list[str],
+        count: int = 5
+    ) -> dict[str, list[dict]]:
+        """依 LOINC 代碼取得特定檢驗資料
+        
+        常用 LOINC 代碼:
+        - 2160-0: Creatinine (血清肌酸酐)
+        - 33914-3: eGFR (腎絲球過濾率)
+        - 3094-0: BUN (血中尿素氮)
+        - 1742-6: ALT (丙氨酸轉氨酶)
+        - 1920-8: AST (天門冬氨酸轉氨酶)
+        - 1975-2: Bilirubin Total (總膽紅素)
+        - 3016-3: TSH (促甲狀腺激素)
+        - 3026-2: T4 Free (游離甲狀腺素)
+        - 718-7: Hemoglobin (血紅素)
+        - 6690-2: WBC (白血球)
+        - 777-3: Platelet (血小板)
+        
+        Args:
+            patient_ref: 病人參考
+            loinc_codes: LOINC 代碼列表
+            count: 每個代碼最多取回筆數
+        
+        Returns:
+            以 LOINC 代碼為 key 的檢驗資料字典
+        """
+        patient_id = patient_ref.replace("Patient/", "")
+        results = {}
+        
+        for code in loinc_codes:
+            result = await self._request(
+                "GET",
+                "Observation",
+                params={
+                    "patient": patient_id,
+                    "code": code,
+                    "_sort": "-date",
+                    "_count": str(count)
+                }
+            )
+            
+            if result and "entry" in result:
+                results[code] = [e.get("resource", {}) for e in result["entry"]]
+            else:
+                results[code] = []
+        
+        return results
+    
     # === MedicationRequest ===
     
     async def create_medication_request(self, data: dict) -> Optional[dict]:

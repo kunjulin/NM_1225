@@ -1,0 +1,54 @@
+{
+  "resourceType": "ServiceRequest",
+  "id": "exam-007",
+  "status": "active",
+  "intent": "order",
+  "category": [
+    {
+      "coding": [
+        {
+          "system": "http://snomed.info/sct",
+          "code": "363679005",
+          "display": "Imaging"
+        }
+      ]
+    }
+  ],
+  "code": {
+    "coding": [
+      {
+        "system": "http://snomed.info/sct",
+        "code": "77477000",
+        "display": "Computerized axial tomography of bone"
+      }
+    ],
+    "text": "骨骼掃描 (Tc-99m MDP)"
+  },
+  "subject": {
+    "reference": "Patient/patient-1007",
+    "display": "王大明"
+  },
+  "authoredOn": "2024-12-25T09:00:00+08:00",
+  "requester": {
+    "reference": "Practitioner/dr-001",
+    "display": "陳醫師"
+  },
+  "reasonCode": [
+    {
+      "coding": [
+        {
+          "system": "http://hl7.org/fhir/sid/icd-10-cm",
+          "code": "M81.0",
+          "display": "Osteoporosis"
+        }
+      ],
+      "text": "骨質疏鬆追蹤"
+    }
+  ],
+  "note": [
+    {
+      "text": "病人有骨質疏鬆病史，需追蹤骨骼代謝情況。注意：病人對碘顯影劑過敏。"
+    }
+  ]
+}
+

@@ -33,6 +33,13 @@ from app.schemas.snapshot import (
     RuleFlagInfo,
     RuleEvalInfo,
     ReviewEventInfo,
+    EncounterInfo,
+    ConditionInfo,
+    MedicationInfo,
+    ProcedureInfo,
+    LabResultInfo,
+    LabResultsGrouped,
+    AllergyInfo,
 )
 from app.services.auth_service import CurrentUser
 from app.rules.engine import RuleEngine
@@ -69,12 +76,7 @@ class SnapshotService:
         
         # 解析快照
         snapshot_data = json.loads(case.snapshot_json or "{}")
-        snapshot = SnapshotData(
-            conditions=snapshot_data.get("conditions", []),
-            allergies=snapshot_data.get("allergies", []),
-            observations=snapshot_data.get("observations", []),
-            documents=snapshot_data.get("documents", []),
-        )
+        snapshot = self._parse_snapshot_data(snapshot_data)
         
         # 產生候選值
         candidate_facts = self._generate_candidate_facts(case, snapshot_data)
@@ -281,25 +283,98 @@ class SnapshotService:
         return review_events
     
     async def _refresh_snapshot(self, case: OrderCase):
-        """從 FHIR 重新擷取快照"""
+        """從 FHIR 重新擷取完整臨床快照
+        
+        擷取內容包含:
+        - 基本病人資訊
+        - ServiceRequest 檢查資訊 (examCode, examDisplay)
+        - 就醫紀錄 (Encounter)
+        - 診斷/病史 (Condition)
+        - 用藥紀錄 (MedicationStatement)
+        - 處置紀錄 (Procedure)
+        - 過敏史 (AllergyIntolerance)
+        - 檢驗資料 (Observation) - 含腎功能、肝功能、甲狀腺、血液
+        """
         try:
-            # 取得 Patient
+            # 取得 Patient 基本資訊
             patient = await self.fhir_client.get_patient(case.patient_ref)
             
-            # 取得最近的體重 Observation
+            # 取得 ServiceRequest 以提取檢查資訊
+            exam_code = None
+            exam_display = None
+            if case.service_request_ref:
+                try:
+                    service_request = await self.fhir_client.get_service_request(case.service_request_ref)
+                    if service_request:
+                        code = service_request.get("code", {})
+                        coding = code.get("coding", [{}])[0] if code.get("coding") else {}
+                        snomed_code = coding.get("code", "")
+                        exam_display = coding.get("display", "") or code.get("text", "")
+                        
+                        # 將 SNOMED CT 代碼映射到系統 examCode
+                        # SNOMED CT 到系統 examCode 的映射表
+                        snomed_to_exam_code = {
+                            "77477000": "BONE_SCAN",  # Bone scan (骨骼掃描)
+                            "241620005": "MAG3",      # Renal scan (腎功能掃描)
+                            "241520004": "DMSA",      # DMSA scan (腎臟皮質掃描)
+                            "312124007": "MIBG",      # MIBG scan
+                            "78800008": "FDG_PET",    # PET scan
+                            "241520004": "DTPA",      # DTPA scan (腎絲球過濾率掃描)
+                        }
+                        
+                        exam_code = snomed_to_exam_code.get(snomed_code, snomed_code)  # 如果沒有映射，使用原始代碼
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Failed to fetch ServiceRequest {case.service_request_ref}: {e}")
+            
+            # 並行取得各類臨床資料
             weight_obs = await self.fhir_client.get_latest_weight(case.patient_ref)
-            
-            # 取得過敏資料
             allergies = await self.fhir_client.get_allergies(case.patient_ref)
+            encounters = await self.fhir_client.get_encounters(case.patient_ref)
+            conditions = await self.fhir_client.get_conditions(case.patient_ref)
+            medications = await self.fhir_client.get_medications(case.patient_ref)
+            procedures = await self.fhir_client.get_procedures(case.patient_ref)
             
-            # 組合快照
+            # 取得重要檢驗資料 (LOINC codes)
+            lab_codes = [
+                "2160-0",   # Creatinine (血清肌酸酐)
+                "33914-3",  # eGFR (腎絲球過濾率)
+                "3094-0",   # BUN (血中尿素氮)
+                "1742-6",   # ALT (丙氨酸轉氨酶)
+                "1920-8",   # AST (天門冬氨酸轉氨酶)
+                "1975-2",   # Bilirubin Total (總膽紅素)
+                "3016-3",   # TSH (促甲狀腺激素)
+                "3026-2",   # T4 Free (游離甲狀腺素)
+                "718-7",    # Hemoglobin (血紅素)
+                "6690-2",   # WBC (白血球)
+                "777-3",    # Platelet (血小板)
+            ]
+            lab_results = await self.fhir_client.get_lab_by_codes(case.patient_ref, lab_codes)
+            
+            # 組合快照 (保留原有結構以維持相容性)
+            patient_name = "Unknown"
+            if patient and patient.get("name"):
+                name_obj = patient["name"][0]
+                patient_name = name_obj.get("text") or f"{name_obj.get('family', '')} {' '.join(name_obj.get('given', []))}"
+            
             snapshot = {
-                "patientName": patient.get("name", [{}])[0].get("text", "Unknown"),
+                # 原有欄位
+                "patientName": patient_name,
                 "patientId": case.patient_ref,
+                "examCode": exam_code,  # 從 ServiceRequest 提取
+                "examDisplay": exam_display,  # 從 ServiceRequest 提取
                 "observations": [weight_obs] if weight_obs else [],
                 "allergies": allergies,
-                "conditions": [],
+                "conditions": conditions,
                 "documents": [],
+                
+                # 新增: 結構化臨床資料
+                "encounters": self._parse_encounters(encounters),
+                "conditionList": self._parse_conditions(conditions),
+                "medications": self._parse_medications(medications),
+                "procedures": self._parse_procedures(procedures),
+                "labResults": self._parse_lab_results(lab_results),
+                "allergyList": self._parse_allergies(allergies),
             }
             
             if weight_obs:
@@ -311,8 +386,285 @@ class SnapshotService:
             case.updated_at = datetime.now(timezone.utc).isoformat()
             
         except Exception as e:
-            # 擷取失敗時保留舊快照
-            pass
+            # 擷取失敗時保留舊快照，記錄錯誤
+            import logging
+            logging.getLogger(__name__).error(f"Failed to refresh snapshot for case {case.id}: {e}")
+    
+    def _parse_snapshot_data(self, snapshot_data: dict) -> SnapshotData:
+        """解析快照資料為結構化格式"""
+        # 解析分類檢驗結果
+        lab_results_data = snapshot_data.get("labResults")
+        lab_results = None
+        if lab_results_data:
+            lab_results = LabResultsGrouped(
+                renal=[LabResultInfo(**r) for r in lab_results_data.get("renal", [])],
+                hepatic=[LabResultInfo(**r) for r in lab_results_data.get("hepatic", [])],
+                thyroid=[LabResultInfo(**r) for r in lab_results_data.get("thyroid", [])],
+                hematology=[LabResultInfo(**r) for r in lab_results_data.get("hematology", [])],
+                other=[LabResultInfo(**r) for r in lab_results_data.get("other", [])],
+            )
+        
+        return SnapshotData(
+            # 原有欄位
+            conditions=snapshot_data.get("conditions", []),
+            allergies=snapshot_data.get("allergies", []),
+            observations=snapshot_data.get("observations", []),
+            documents=snapshot_data.get("documents", []),
+            # 新增結構化欄位
+            encounters=[EncounterInfo(**e) for e in snapshot_data.get("encounters", [])],
+            conditionList=[ConditionInfo(**c) for c in snapshot_data.get("conditionList", [])],
+            medications=[MedicationInfo(**m) for m in snapshot_data.get("medications", [])],
+            procedures=[ProcedureInfo(**p) for p in snapshot_data.get("procedures", [])],
+            labResults=lab_results,
+            allergyList=[AllergyInfo(**a) for a in snapshot_data.get("allergyList", [])],
+        )
+    
+    def _parse_encounters(self, encounters: list[dict]) -> list[dict]:
+        """解析就醫紀錄 FHIR 資源"""
+        result = []
+        for enc in encounters:
+            class_info = enc.get("class", {})
+            type_info = enc.get("type", [{}])[0] if enc.get("type") else {}
+            type_coding = type_info.get("coding", [{}])[0] if type_info.get("coding") else {}
+            reason = enc.get("reasonCode", [{}])[0] if enc.get("reasonCode") else {}
+            reason_coding = reason.get("coding", [{}])[0] if reason.get("coding") else {}
+            period = enc.get("period", {})
+            location = enc.get("location", [{}])[0] if enc.get("location") else {}
+            
+            result.append({
+                "id": enc.get("id", ""),
+                "status": enc.get("status"),
+                "classCode": class_info.get("code"),
+                "classDisplay": class_info.get("display") or self._get_encounter_class_display(class_info.get("code")),
+                "typeCode": type_coding.get("code"),
+                "typeDisplay": type_coding.get("display"),
+                "periodStart": period.get("start"),
+                "periodEnd": period.get("end"),
+                "reasonCode": reason_coding.get("code"),
+                "reasonDisplay": reason_coding.get("display") or reason.get("text"),
+                "location": location.get("location", {}).get("display"),
+            })
+        return result
+    
+    def _get_encounter_class_display(self, code: Optional[str]) -> Optional[str]:
+        """取得就醫類別顯示名稱"""
+        mapping = {
+            "AMB": "門診",
+            "EMER": "急診",
+            "IMP": "住院",
+            "ACUTE": "急性照護",
+            "NONAC": "非急性照護",
+            "OBSENC": "產科照護",
+            "PRENC": "術前評估",
+            "VR": "虛擬",
+            "HH": "居家照護",
+        }
+        return mapping.get(code) if code else None
+    
+    def _parse_conditions(self, conditions: list[dict]) -> list[dict]:
+        """解析診斷/病史 FHIR 資源"""
+        result = []
+        for cond in conditions:
+            clinical_status = cond.get("clinicalStatus", {}).get("coding", [{}])[0].get("code")
+            verification_status = cond.get("verificationStatus", {}).get("coding", [{}])[0].get("code")
+            category = cond.get("category", [{}])[0] if cond.get("category") else {}
+            category_coding = category.get("coding", [{}])[0] if category.get("coding") else {}
+            code_info = cond.get("code", {})
+            code_coding = code_info.get("coding", [{}])[0] if code_info.get("coding") else {}
+            severity = cond.get("severity", {}).get("coding", [{}])[0].get("display") if cond.get("severity") else None
+            
+            result.append({
+                "id": cond.get("id", ""),
+                "clinicalStatus": clinical_status,
+                "verificationStatus": verification_status,
+                "categoryCode": category_coding.get("code"),
+                "categoryDisplay": category_coding.get("display"),
+                "code": code_coding.get("code"),
+                "codeSystem": code_coding.get("system"),
+                "display": code_coding.get("display") or code_info.get("text"),
+                "onsetDateTime": cond.get("onsetDateTime"),
+                "recordedDate": cond.get("recordedDate"),
+                "severity": severity,
+            })
+        return result
+    
+    def _parse_medications(self, medications: list[dict]) -> list[dict]:
+        """解析用藥紀錄 FHIR 資源"""
+        result = []
+        for med in medications:
+            medication = med.get("medicationCodeableConcept", {})
+            med_coding = medication.get("coding", [{}])[0] if medication.get("coding") else {}
+            dosage = med.get("dosage", [{}])[0] if med.get("dosage") else {}
+            route = dosage.get("route", {}).get("coding", [{}])[0] if dosage.get("route") else {}
+            reason = med.get("reasonCode", [{}])[0] if med.get("reasonCode") else {}
+            reason_coding = reason.get("coding", [{}])[0] if reason.get("coding") else {}
+            effective = med.get("effectivePeriod", {})
+            
+            result.append({
+                "id": med.get("id", ""),
+                "status": med.get("status"),
+                "medicationCode": med_coding.get("code"),
+                "medicationDisplay": med_coding.get("display") or medication.get("text"),
+                "dosageText": dosage.get("text"),
+                "route": route.get("display"),
+                "effectiveStart": effective.get("start") or med.get("effectiveDateTime"),
+                "effectiveEnd": effective.get("end"),
+                "reasonCode": reason_coding.get("code"),
+                "reasonDisplay": reason_coding.get("display") or reason.get("text"),
+            })
+        return result
+    
+    def _parse_procedures(self, procedures: list[dict]) -> list[dict]:
+        """解析處置紀錄 FHIR 資源"""
+        result = []
+        for proc in procedures:
+            code_info = proc.get("code", {})
+            code_coding = code_info.get("coding", [{}])[0] if code_info.get("coding") else {}
+            body_site = proc.get("bodySite", [{}])[0] if proc.get("bodySite") else {}
+            body_site_coding = body_site.get("coding", [{}])[0] if body_site.get("coding") else {}
+            outcome = proc.get("outcome", {}).get("coding", [{}])[0] if proc.get("outcome") else {}
+            performed = proc.get("performedPeriod", {})
+            
+            result.append({
+                "id": proc.get("id", ""),
+                "status": proc.get("status"),
+                "code": code_coding.get("code"),
+                "codeSystem": code_coding.get("system"),
+                "display": code_coding.get("display") or code_info.get("text"),
+                "performedDateTime": proc.get("performedDateTime"),
+                "performedPeriodStart": performed.get("start"),
+                "performedPeriodEnd": performed.get("end"),
+                "bodySite": body_site_coding.get("display") or body_site.get("text"),
+                "outcome": outcome.get("display"),
+            })
+        return result
+    
+    def _parse_lab_results(self, lab_results: dict[str, list[dict]]) -> dict:
+        """解析檢驗結果並分類
+        
+        Args:
+            lab_results: 以 LOINC 代碼為 key 的檢驗資料字典
+        
+        Returns:
+            分類後的檢驗結果
+        """
+        # LOINC 代碼對應的檢驗項目資訊
+        lab_info = {
+            "2160-0": {"display": "Creatinine (肌酸酐)", "category": "renal"},
+            "33914-3": {"display": "eGFR (腎絲球過濾率)", "category": "renal"},
+            "3094-0": {"display": "BUN (血中尿素氮)", "category": "renal"},
+            "1742-6": {"display": "ALT (丙氨酸轉氨酶)", "category": "hepatic"},
+            "1920-8": {"display": "AST (天門冬氨酸轉氨酶)", "category": "hepatic"},
+            "1975-2": {"display": "Bilirubin Total (總膽紅素)", "category": "hepatic"},
+            "3016-3": {"display": "TSH (促甲狀腺激素)", "category": "thyroid"},
+            "3026-2": {"display": "T4 Free (游離甲狀腺素)", "category": "thyroid"},
+            "718-7": {"display": "Hemoglobin (血紅素)", "category": "hematology"},
+            "6690-2": {"display": "WBC (白血球)", "category": "hematology"},
+            "777-3": {"display": "Platelet (血小板)", "category": "hematology"},
+        }
+        
+        categorized = {
+            "renal": [],
+            "hepatic": [],
+            "thyroid": [],
+            "hematology": [],
+            "other": [],
+        }
+        
+        for loinc_code, observations in lab_results.items():
+            info = lab_info.get(loinc_code, {"display": loinc_code, "category": "other"})
+            category = info["category"]
+            
+            for obs in observations:
+                # 解析數值
+                value = None
+                value_string = None
+                unit = None
+                
+                if "valueQuantity" in obs:
+                    vq = obs["valueQuantity"]
+                    value = vq.get("value")
+                    unit = vq.get("unit") or vq.get("code")
+                elif "valueString" in obs:
+                    value_string = obs["valueString"]
+                elif "valueCodeableConcept" in obs:
+                    value_string = obs["valueCodeableConcept"].get("text") or \
+                                   obs["valueCodeableConcept"].get("coding", [{}])[0].get("display")
+                
+                # 解析參考範圍
+                ref_range = obs.get("referenceRange", [{}])[0] if obs.get("referenceRange") else {}
+                ref_low = ref_range.get("low", {}).get("value")
+                ref_high = ref_range.get("high", {}).get("value")
+                ref_text = ref_range.get("text")
+                
+                # 解析解讀
+                interpretation = None
+                is_abnormal = False
+                if obs.get("interpretation"):
+                    interp_coding = obs["interpretation"][0].get("coding", [{}])[0]
+                    interpretation = interp_coding.get("code")
+                    # 非正常值判斷
+                    is_abnormal = interpretation in ["L", "H", "LL", "HH", "A", "AA"]
+                
+                lab_entry = {
+                    "id": obs.get("id", ""),
+                    "code": loinc_code,
+                    "codeDisplay": info["display"],
+                    "category": category,
+                    "value": value,
+                    "valueString": value_string,
+                    "unit": unit,
+                    "referenceRangeLow": ref_low,
+                    "referenceRangeHigh": ref_high,
+                    "referenceRangeText": ref_text,
+                    "interpretation": interpretation,
+                    "effectiveDateTime": obs.get("effectiveDateTime"),
+                    "isAbnormal": is_abnormal,
+                }
+                
+                categorized[category].append(lab_entry)
+        
+        return categorized
+    
+    def _parse_allergies(self, allergies: list[dict]) -> list[dict]:
+        """解析過敏資訊 FHIR 資源"""
+        result = []
+        for allergy in allergies:
+            clinical_status = allergy.get("clinicalStatus", {}).get("coding", [{}])[0].get("code")
+            verification_status = allergy.get("verificationStatus", {}).get("coding", [{}])[0].get("code")
+            code_info = allergy.get("code", {})
+            code_coding = code_info.get("coding", [{}])[0] if code_info.get("coding") else {}
+            
+            # 解析反應症狀
+            reactions = []
+            for reaction in allergy.get("reaction", []):
+                manifestations = []
+                for manifest in reaction.get("manifestation", []):
+                    coding = manifest.get("coding", [{}])[0] if manifest.get("coding") else {}
+                    manifestations.append({
+                        "code": coding.get("code"),
+                        "display": coding.get("display") or manifest.get("text"),
+                    })
+                reactions.append({
+                    "severity": reaction.get("severity"),
+                    "manifestations": manifestations,
+                    "description": reaction.get("description"),
+                })
+            
+            result.append({
+                "id": allergy.get("id", ""),
+                "clinicalStatus": clinical_status,
+                "verificationStatus": verification_status,
+                "type": allergy.get("type"),
+                "category": allergy.get("category", [None])[0] if allergy.get("category") else None,
+                "criticality": allergy.get("criticality"),
+                "code": code_coding.get("code"),
+                "display": code_coding.get("display") or code_info.get("text"),
+                "onsetDateTime": allergy.get("onsetDateTime"),
+                "recordedDate": allergy.get("recordedDate"),
+                "reactions": reactions,
+            })
+        return result
     
     def _generate_candidate_facts(
         self, 

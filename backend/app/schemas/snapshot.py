@@ -66,12 +66,120 @@ class CandidateFact(BaseModel):
     derived: Optional[dict[str, Any]] = None
 
 
+class EncounterInfo(BaseModel):
+    """就醫紀錄資訊"""
+    id: str
+    status: Optional[str] = None
+    classCode: Optional[str] = None  # 就醫類別: AMB(門診), EMER(急診), IMP(住院)
+    classDisplay: Optional[str] = None
+    typeCode: Optional[str] = None
+    typeDisplay: Optional[str] = None
+    periodStart: Optional[str] = None
+    periodEnd: Optional[str] = None
+    reasonCode: Optional[str] = None
+    reasonDisplay: Optional[str] = None
+    location: Optional[str] = None
+
+
+class ConditionInfo(BaseModel):
+    """診斷/病史資訊"""
+    id: str
+    clinicalStatus: Optional[str] = None  # active, recurrence, relapse, inactive, remission, resolved
+    verificationStatus: Optional[str] = None  # unconfirmed, provisional, differential, confirmed
+    categoryCode: Optional[str] = None
+    categoryDisplay: Optional[str] = None
+    code: Optional[str] = None  # ICD-10 診斷碼
+    codeSystem: Optional[str] = None
+    display: Optional[str] = None  # 診斷名稱
+    onsetDateTime: Optional[str] = None
+    recordedDate: Optional[str] = None
+    severity: Optional[str] = None
+
+
+class MedicationInfo(BaseModel):
+    """用藥紀錄資訊"""
+    id: str
+    status: Optional[str] = None  # active, completed, stopped, on-hold
+    medicationCode: Optional[str] = None
+    medicationDisplay: Optional[str] = None
+    dosageText: Optional[str] = None
+    route: Optional[str] = None  # 給藥途徑
+    effectiveStart: Optional[str] = None
+    effectiveEnd: Optional[str] = None
+    reasonCode: Optional[str] = None
+    reasonDisplay: Optional[str] = None
+
+
+class ProcedureInfo(BaseModel):
+    """處置紀錄資訊"""
+    id: str
+    status: Optional[str] = None
+    code: Optional[str] = None
+    codeSystem: Optional[str] = None
+    display: Optional[str] = None
+    performedDateTime: Optional[str] = None
+    performedPeriodStart: Optional[str] = None
+    performedPeriodEnd: Optional[str] = None
+    bodySite: Optional[str] = None
+    outcome: Optional[str] = None
+
+
+class LabResultInfo(BaseModel):
+    """檢驗結果資訊"""
+    id: str
+    code: str  # LOINC 代碼
+    codeDisplay: Optional[str] = None  # 檢驗項目名稱
+    category: Optional[str] = None  # 類別: renal, hepatic, thyroid, hematology
+    value: Optional[float] = None
+    valueString: Optional[str] = None  # 非數值結果
+    unit: Optional[str] = None
+    referenceRangeLow: Optional[float] = None
+    referenceRangeHigh: Optional[float] = None
+    referenceRangeText: Optional[str] = None
+    interpretation: Optional[str] = None  # N(正常), L(偏低), H(偏高), LL, HH, A(異常)
+    effectiveDateTime: Optional[str] = None
+    isAbnormal: bool = False
+
+
+class AllergyInfo(BaseModel):
+    """過敏資訊"""
+    id: str
+    clinicalStatus: Optional[str] = None  # active, inactive, resolved
+    verificationStatus: Optional[str] = None  # unconfirmed, confirmed
+    type: Optional[str] = None  # allergy, intolerance
+    category: Optional[str] = None  # food, medication, environment, biologic
+    criticality: Optional[str] = None  # low, high, unable-to-assess
+    code: Optional[str] = None  # 過敏原代碼
+    display: Optional[str] = None  # 過敏原名稱
+    onsetDateTime: Optional[str] = None
+    recordedDate: Optional[str] = None
+    reactions: list[dict[str, Any]] = []  # 反應症狀列表
+
+
+class LabResultsGrouped(BaseModel):
+    """分類的檢驗結果"""
+    renal: list[LabResultInfo] = []      # 腎功能: Creatinine, eGFR, BUN
+    hepatic: list[LabResultInfo] = []    # 肝功能: AST, ALT, Bilirubin
+    thyroid: list[LabResultInfo] = []    # 甲狀腺: TSH, T4
+    hematology: list[LabResultInfo] = [] # 血液: Hgb, WBC, Platelet
+    other: list[LabResultInfo] = []      # 其他檢驗
+
+
 class SnapshotData(BaseModel):
     """病人快照資料"""
+    # 原有欄位 (保留相容性)
     conditions: list[dict[str, Any]] = []
     allergies: list[dict[str, Any]] = []
     observations: list[dict[str, Any]] = []
     documents: list[dict[str, Any]] = []
+    
+    # 新增: 結構化臨床資料
+    encounters: list[EncounterInfo] = []      # 就醫紀錄
+    conditionList: list[ConditionInfo] = []   # 診斷/病史 (結構化)
+    medications: list[MedicationInfo] = []    # 用藥紀錄
+    procedures: list[ProcedureInfo] = []      # 處置紀錄
+    labResults: Optional[LabResultsGrouped] = None  # 分類檢驗結果
+    allergyList: list[AllergyInfo] = []       # 過敏史 (結構化)
 
 
 class DoseValue(BaseModel):

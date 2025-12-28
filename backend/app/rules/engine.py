@@ -90,16 +90,21 @@ class RuleEngine:
             if calculated_dose < min_activity:
                 calculated_dose = min_activity
             
+            # 兒童的最大劑量：使用計算出的劑量上限，但不超過 max_activity
+            # 這是因為兒童劑量應該根據體重計算，不應該使用成人的絕對上限
+            pediatric_max_dose = min(calculated_high, max_activity)
+            
             formula = f"{weight_kg:.1f} kg × {activity_per_kg_high} MBq/kg = {calculated_high:.1f} MBq"
             if calculated_dose == min_activity:
                 formula += f" (使用最小劑量 {min_activity} MBq)"
             elif calculated_dose == max_activity:
                 formula += f" (上限 {max_activity} MBq)"
+            formula += f" (範圍: {min_activity}-{pediatric_max_dose:.1f} MBq)"
             
             return DoseCalculationResult(
                 suggested_dose=round(calculated_dose, 1),
                 min_dose=min_activity,
-                max_dose=max_activity,
+                max_dose=round(pediatric_max_dose, 1),  # 使用根據體重計算的上限
                 formula=formula,
                 reference="NA-2024",
                 weight_used=weight_kg,
@@ -111,19 +116,19 @@ class RuleEngine:
             calculated_high = weight_kg * activity_per_kg_high
             suggested = min(calculated_high, max_activity)
             
-            # 最大劑量: min(體重 × 高端係數, max_activity)
-            calculated_max = weight_kg * activity_per_kg_high
-            final_max = min(calculated_max, max_activity)
+            # 最大劑量: 使用 max_activity 作為絕對上限（來自 rules_config.yaml）
+            # 這是安全上限，超過此值應列為 FAIL
+            final_max = max_activity
             
             formula = f"體重 {weight_kg:.1f} kg × {activity_per_kg_high} MBq/kg = {calculated_high:.1f} MBq"
             if suggested == max_activity:
                 formula += f" (上限 {max_activity} MBq)"
-            formula += f" (範圍: {min_activity}-{final_max:.1f} MBq)"
+            formula += f" (範圍: {min_activity}-{max_activity} MBq)"
             
             return DoseCalculationResult(
                 suggested_dose=round(suggested, 1),
                 min_dose=min_activity,
-                max_dose=round(final_max, 1),
+                max_dose=max_activity,  # 使用絕對上限
                 formula=formula,
                 reference="NA-2024",
                 weight_used=weight_kg,
@@ -211,16 +216,34 @@ class RuleEngine:
                     ))
                 
                 # 如果劑量與建議值相差超過 20%，發出警告
+                # 但如果偏差過大（> 150%），即使還在範圍內，也應該觸發 FAIL
                 if dose_calc.suggested_dose > 0:
                     deviation = abs(dose_value - dose_calc.suggested_dose) / dose_calc.suggested_dose
                     if deviation > 0.2 and dose_value >= dose_calc.min_dose and dose_value <= dose_calc.max_dose:
-                        flags.append(RuleFlag(
-                            code="DOSE_DEVIATION",
-                            severity=Severity.INFO,
-                            title="劑量與建議值有差異",
-                            explain=f"NA-2024 建議劑量為 {dose_calc.suggested_dose} MBq，目前為 {dose_value} MBq (差異 {deviation*100:.0f}%)",
-                            tags=["dose", "na2024"]
-                        ))
+                        # 根據偏差程度決定嚴重度
+                        # 偏差 > 150%: FAIL (嚴重偏差，即使還在範圍內)
+                        # 偏差 100-150%: WARN (需要評估)
+                        # 偏差 20-100%: INFO (提醒)
+                        if deviation > 1.5:
+                            # 偏差過大，即使還在範圍內，也應該列為 FAIL
+                            flags.append(RuleFlag(
+                                code="DOSE_EXCESSIVE_DEVIATION",
+                                severity=Severity.FAIL,
+                                title="劑量與建議值差異過大",
+                                explain=f"NA-2024 建議劑量為 {dose_calc.suggested_dose} MBq，目前為 {dose_value} MBq (差異 {deviation*100:.0f}%)。雖然在允許範圍內，但偏差過大需要重新評估。",
+                                recommendation="請調整劑量至建議值附近，或提供 Override 理由",
+                                tags=["dose", "na2024", "excessive"]
+                            ))
+                        else:
+                            severity = Severity.WARN if deviation > 1.0 else Severity.INFO
+                            flags.append(RuleFlag(
+                                code="DOSE_DEVIATION",
+                                severity=severity,
+                                title="劑量與建議值有差異" if deviation <= 1.0 else "劑量與建議值差異過大，需要評估",
+                                explain=f"NA-2024 建議劑量為 {dose_calc.suggested_dose} MBq，目前為 {dose_value} MBq (差異 {deviation*100:.0f}%)",
+                                recommendation="請確認劑量是否適當，或提供 Override 理由" if deviation > 1.0 else None,
+                                tags=["dose", "na2024"]
+                            ))
             else:
                 # Fallback 到舊的劑量範圍檢查
                 dose_range = self.config.get_dose_range(exam_code)
