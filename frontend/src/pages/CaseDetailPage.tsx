@@ -849,15 +849,16 @@ export function CaseDetailPage() {
                 )}
                 
                 <Grid container spacing={2}>
-                  {/* 體重輸入（缺少體重或使用本地資料時顯示） */}
+                  {/* 體重輸入（缺少體重時顯示，或核醫醫師可以修改體重） */}
                   {(() => {
                     const hasMissingWeight = snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT')
                     const currentWeight = snapshot.doseCalculation?.weightUsed || snapshot.snapshot.weightKg
                     const hasLocalWeight = snapshot.candidateFacts.some(
                       f => f.factType === 'WEIGHT_KG' && (f.sourceType === 'MANUAL' || f.sourceType === 'AUTOFILL')
                     )
-                    // 如果有體重資料或缺少體重，都顯示輸入欄位
-                    const shouldShowWeightInput = hasMissingWeight || hasLocalWeight || currentWeight
+                    // 如果缺少體重，或狀態為 NM_PENDING（待核醫處理），都顯示輸入欄位
+                    // 這樣即使沒有體重資料，核醫醫師也可以手動輸入
+                    const shouldShowWeightInput = hasMissingWeight || snapshot.status === 'NM_PENDING' || hasLocalWeight || currentWeight
                     
                     if (!shouldShowWeightInput) return null
                     
@@ -1006,63 +1007,92 @@ export function CaseDetailPage() {
                   </Grid>
                   
                   {/* NA-2024 劑量計算參考 */}
-                  {snapshot.doseCalculation && (
-                    <Grid item xs={12}>
-                      <Paper 
-                        variant="outlined" 
-                        sx={{ 
-                          p: 2, 
-                          bgcolor: 'primary.light',
-                          borderColor: 'primary.main',
-                        }}
-                      >
-                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                          <Box>
-                            <Typography variant="body2" color="primary.dark" fontWeight={600} gutterBottom>
-                              NA-2024 劑量計算參考
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {snapshot.doseCalculation.formula}
-                            </Typography>
-                            <Box mt={1}>
-                              <Chip 
-                                label={snapshot.doseCalculation.isPediatric ? '兒童劑量' : '成人劑量'} 
-                                size="small" 
-                                color={snapshot.doseCalculation.isPediatric ? 'secondary' : 'default'}
-                                sx={{ mr: 1 }}
-                              />
-                              {snapshot.doseCalculation.weightUsed && (
-                                <Chip 
-                                  label={`體重: ${snapshot.doseCalculation.weightUsed} kg`} 
-                                  size="small" 
-                                  variant="outlined"
-                                />
-                              )}
-                            </Box>
-                          </Box>
-                          <Box textAlign="right">
-                            <Typography variant="h5" color="primary.dark">
-                              {snapshot.doseCalculation.suggestedDose} MBq
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              範圍: {snapshot.doseCalculation.minDose} - {snapshot.doseCalculation.maxDose} MBq
-                            </Typography>
-                          </Box>
-                        </Stack>
-                        <Divider sx={{ my: 1.5 }} />
-                        <Button
-                          variant="contained"
-                          size="small"
-                          onClick={() => {
-                            saveDraftMutation.mutate({ doseValue: snapshot.doseCalculation!.suggestedDose })
+                  {/* 只要有檢查代碼，就應該顯示劑量計算 panel（即使沒有體重也會顯示範圍資訊） */}
+                  {(() => {
+                    const hasExamCode = snapshot.snapshot.examCode || snapshot.draft?.examCode
+                    const hasMissingWeight = snapshot.ruleEval?.flags.some(f => f.code === 'MISSING_WEIGHT')
+                    
+                    // 如果有檢查代碼，應該顯示劑量計算 panel
+                    // 即使沒有體重，後端也會返回範圍資訊
+                    if (!hasExamCode && !snapshot.doseCalculation) return null
+                    
+                    // 如果沒有 doseCalculation 但有檢查代碼，可能是後端還沒計算
+                    // 這種情況下不顯示，等待後端提供資料
+                    if (!snapshot.doseCalculation) return null
+                    
+                    return (
+                      <Grid item xs={12}>
+                        <Paper 
+                          variant="outlined" 
+                          sx={{ 
+                            p: 2, 
+                            bgcolor: hasMissingWeight ? 'warning.light' : 'primary.light',
+                            borderColor: hasMissingWeight ? 'warning.main' : 'primary.main',
                           }}
-                          disabled={saveDraftMutation.isPending}
                         >
-                          採用建議劑量
-                        </Button>
-                      </Paper>
-                    </Grid>
-                  )}
+                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                            <Box>
+                              <Typography variant="body2" color={hasMissingWeight ? 'warning.dark' : 'primary.dark'} fontWeight={600} gutterBottom>
+                                NA-2024 劑量計算參考
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {snapshot.doseCalculation.formula}
+                              </Typography>
+                              {hasMissingWeight && (
+                                <Alert severity="warning" sx={{ mt: 1, mb: 1 }}>
+                                  目前沒有體重資料，顯示的是劑量範圍。請輸入體重後，系統會自動計算個人化劑量。
+                                </Alert>
+                              )}
+                              <Box mt={1}>
+                                {snapshot.doseCalculation.isPediatric && (
+                                  <Chip 
+                                    label="兒童劑量" 
+                                    size="small" 
+                                    color="secondary"
+                                    sx={{ mr: 1 }}
+                                  />
+                                )}
+                                {snapshot.doseCalculation.weightUsed ? (
+                                  <Chip 
+                                    label={`體重: ${snapshot.doseCalculation.weightUsed} kg`} 
+                                    size="small" 
+                                    variant="outlined"
+                                  />
+                                ) : (
+                                  <Chip 
+                                    label="未提供體重" 
+                                    size="small" 
+                                    color="warning"
+                                    variant="outlined"
+                                  />
+                                )}
+                              </Box>
+                            </Box>
+                            <Box textAlign="right">
+                              <Typography variant="h5" color={hasMissingWeight ? 'warning.dark' : 'primary.dark'}>
+                                {snapshot.doseCalculation.suggestedDose} MBq
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                範圍: {snapshot.doseCalculation.minDose} - {snapshot.doseCalculation.maxDose} MBq
+                              </Typography>
+                            </Box>
+                          </Stack>
+                          <Divider sx={{ my: 1.5 }} />
+                          <Button
+                            variant="contained"
+                            size="small"
+                            color={hasMissingWeight ? 'warning' : 'primary'}
+                            onClick={() => {
+                              saveDraftMutation.mutate({ doseValue: snapshot.doseCalculation!.suggestedDose })
+                            }}
+                            disabled={saveDraftMutation.isPending}
+                          >
+                            {hasMissingWeight ? '採用範圍最小劑量' : '採用建議劑量'}
+                          </Button>
+                        </Paper>
+                      </Grid>
+                    )
+                  })()}
                 </Grid>
               </CardContent>
             </Card>

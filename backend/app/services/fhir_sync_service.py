@@ -207,8 +207,23 @@ class FHIRSyncService:
         # 取得檢查資訊
         code = service_request.get("code", {})
         coding = code.get("coding", [{}])[0] if code.get("coding") else {}
-        exam_code = coding.get("code", "")
+        snomed_code = coding.get("code", "")
         exam_display = coding.get("display", "") or code.get("text", "")
+        
+        # 將 SNOMED CT 代碼映射到系統 examCode
+        # SNOMED CT 到系統 examCode 的映射表
+        snomed_to_exam_code = {
+            "77477000": "BONE_SCAN",      # Bone scan (骨骼掃描)
+            "241620005": "MAG3",          # Renal scan (腎功能掃描)
+            "241520004": "DMSA",          # DMSA scan (腎臟皮質掃描)
+            "312124007": "MIBG",          # MIBG scan
+            "78800008": "FDG_PET",        # PET scan
+            "241520004": "DTPA",          # DTPA scan (腎絲球過濾率掃描)
+        }
+        
+        exam_code = snomed_to_exam_code.get(snomed_code, snomed_code)  # 如果沒有映射，使用原始代碼
+        
+        logger.info(f"ServiceRequest {sr_id}: SNOMED code='{snomed_code}', mapped examCode='{exam_code}', display='{exam_display}'")
         
         # 嘗試取得體重
         weight_kg = None
@@ -217,6 +232,9 @@ class FHIRSyncService:
             if weight_obs:
                 value_quantity = weight_obs.get("valueQuantity", {})
                 weight_kg = value_quantity.get("value")
+                logger.info(f"Fetched weight for {patient_ref}: {weight_kg} kg")
+            else:
+                logger.warning(f"No weight observation found for {patient_ref}")
         except Exception as e:
             logger.warning(f"Failed to get weight for {patient_ref}: {e}")
         
@@ -255,9 +273,10 @@ class FHIRSyncService:
         # 執行 CDS 規則評估
         rule_eval = self.rule_engine.evaluate(order_case)
         
-        # 如果 CDS 評估為 PASS，自動建立草案
-        if rule_eval.overallSeverity == Severity.PASS:
-            # 取得 NA-2024 劑量計算
+        # 只要有檢查代碼，就嘗試計算劑量並建立草案
+        # 這樣可以避免 MISSING_DRAFT_DOSE 的錯誤
+        if exam_code:
+            # 取得 NA-2024 劑量計算（即使沒有體重也會返回範圍資訊）
             dose_calc = self.rule_engine.calculate_na2024_dose(exam_code, weight_kg)
             
             if dose_calc:
@@ -275,10 +294,17 @@ class FHIRSyncService:
                 }
                 
                 order_case.draft_json = json.dumps(draft_data, ensure_ascii=False)
-                order_case.status = CaseStatus.NM_DRAFTED.value
-                order_case.updated_at = now
                 
-                logger.info(f"Auto-created draft for OrderCase {case_id} (CDS PASS)")
+                # 如果 CDS 評估為 PASS（有體重且其他條件都滿足），狀態設為 NM_DRAFTED
+                # 否則保持為 NM_PENDING，等待核醫醫師處理（例如輸入體重）
+                if rule_eval.overallSeverity == Severity.PASS:
+                    order_case.status = CaseStatus.NM_DRAFTED.value
+                    logger.info(f"Auto-created draft for OrderCase {case_id} (CDS PASS)")
+                else:
+                    # 即使 CDS 不是 PASS（例如缺少體重），也建立草案，但狀態保持為 NM_PENDING
+                    logger.info(f"Auto-created draft for OrderCase {case_id} (CDS {rule_eval.overallSeverity.value}, waiting for NM physician)")
+                
+                order_case.updated_at = now
             else:
                 logger.warning(f"Could not calculate dose for OrderCase {case_id}, keeping as NM_PENDING")
         

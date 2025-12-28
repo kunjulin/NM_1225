@@ -750,10 +750,48 @@ class SnapshotService:
         )
         self.db.add(event)
         
+        # 如果輸入的是體重，且現在有檢查代碼，自動重新計算劑量並更新草案
+        if request.factType.value == "WEIGHT_KG":
+            snapshot_data = json.loads(case.snapshot_json or "{}")
+            draft_data = json.loads(case.draft_json or "{}")
+            
+            # 取得檢查代碼
+            exam_code = draft_data.get("examCode") or snapshot_data.get("examCode")
+            weight_kg = request.value
+            
+            if exam_code:
+                # 重新計算 NA-2024 劑量
+                dose_calc = self.rule_engine.calculate_na2024_dose(exam_code, weight_kg)
+                
+                if dose_calc:
+                    # 更新草案劑量
+                    if not draft_data:
+                        draft_data = {}
+                    
+                    draft_data["examCode"] = exam_code
+                    draft_data["radiopharmaceuticalCode"] = exam_code
+                    draft_data["suggestedDose"] = {
+                        "value": dose_calc.suggested_dose,
+                        "unit": "MBq"
+                    }
+                    # 保留原有的 override 設定
+                    if "override" not in draft_data:
+                        draft_data["override"] = {"isOverride": False}
+                    
+                    case.draft_json = json.dumps(draft_data, ensure_ascii=False)
+        
         await self.db.commit()
         
-        # 重新評估規則
+        # 重新評估規則（在更新草案後）
         rule_eval = self.rule_engine.evaluate(case)
+        
+        # 如果 CDS 評估變為 PASS，且狀態為 NM_PENDING，自動更新為 NM_DRAFTED
+        from app.models.order_case import CaseStatus
+        from app.rules.engine import Severity
+        if rule_eval.overallSeverity == Severity.PASS and case.status == CaseStatus.NM_PENDING.value:
+            case.status = CaseStatus.NM_DRAFTED.value
+            case.updated_at = datetime.now(timezone.utc).isoformat()
+            await self.db.commit()
         
         return ManualFactResponse(
             caseId=case_id,

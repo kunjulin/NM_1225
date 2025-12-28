@@ -123,19 +123,47 @@ class FHIRClient:
         # 提取 Patient ID
         patient_id = patient_ref.replace("Patient/", "")
         
+        # 嘗試多種排序方式，因為不同 FHIR Server 可能支援不同的排序欄位
+        sort_options = ["-date", "-_lastUpdated", "-effective-date"]
+        
+        for sort_param in sort_options:
+            result = await self._request(
+                "GET", 
+                "Observation",
+                params={
+                    "patient": patient_id,
+                    "code": "29463-7",
+                    "_sort": sort_param,
+                    "_count": "1"
+                }
+            )
+            
+            if result and "entry" in result and len(result["entry"]) > 0:
+                return result["entry"][0].get("resource")
+        
+        # 如果所有排序方式都失敗，嘗試不使用排序
         result = await self._request(
             "GET", 
             "Observation",
             params={
                 "patient": patient_id,
                 "code": "29463-7",
-                "_sort": "-date",
-                "_count": "1"
+                "_count": "10"  # 取得多筆，然後在客戶端排序
             }
         )
         
-        if result and "entry" in result and len(result["entry"]) > 0:
-            return result["entry"][0].get("resource")
+        if result and "entry" in result:
+            # 手動排序，使用 effectiveDateTime 或 _lastUpdated
+            entries = result["entry"]
+            entries.sort(key=lambda e: (
+                e.get("resource", {}).get("effectiveDateTime", "") or 
+                e.get("resource", {}).get("meta", {}).get("lastUpdated", "") or 
+                ""
+            ), reverse=True)
+            
+            if len(entries) > 0:
+                return entries[0].get("resource")
+        
         return None
     
     async def get_renal_function(self, patient_ref: str) -> Optional[dict]:
