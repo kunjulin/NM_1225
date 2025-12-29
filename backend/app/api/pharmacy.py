@@ -35,7 +35,7 @@ async def get_pharmacy_worklist(
     - physicianResponse: 醫師回覆（有藥師退回或醫師回應的案件）
     - exceptions: 需逐筆審查（有 FAIL flags）
     - batchEligible: 可批次核准
-    - approved: 已批准
+    - approved: 批准待上傳
     - myClaimed: 我已 Claim
     """
     service = CaseService(db)

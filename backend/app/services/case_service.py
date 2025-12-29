@@ -249,7 +249,7 @@ class CaseService:
                 ),
                 WorklistGroup(
                     groupKey="approved",
-                    title="已批准",
+                    title="批准待上傳",
                     count=len(approved),
                     items=approved
                 ),

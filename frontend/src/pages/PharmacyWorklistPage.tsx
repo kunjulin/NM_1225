@@ -147,7 +147,7 @@ export function PharmacyWorklistPage() {
   const exceptionsGroup = groups.find(g => g.groupKey === 'exceptions')
   const approvedGroup = groups.find(g => g.groupKey === 'approved')
 
-  // Tab 數據：醫師回覆、可批次核准、需逐筆審查、已批准
+  // Tab 數據：醫師回覆、可批次核准、需逐筆審查、批准待上傳
   const tabData = [
     {
       label: '醫師回覆',
@@ -171,7 +171,7 @@ export function PharmacyWorklistPage() {
       badgeColor: 'error' as const,
     },
     {
-      label: '已批准',
+      label: '批准待上傳',
       count: approvedGroup?.count || 0,
       items: approvedGroup?.items || [],
       showCheckbox: false,
