@@ -117,7 +117,7 @@ class CaseService:
                 # 1. NM_PENDING + CDS PASS → 自動建立草案，移至「已建立草案」
                 # 2. NM_DRAFTED + (CDS FAIL 或不可批次核准) → 移至「待核醫處理」
                 # 3. NM_DRAFTED + (CDS WARN 且可批次核准) → 留在「已建立草案」
-                # 4. 其他 → 按原狀態分群
+                # 4. RETURNED, PHARM_READY → 按原狀態分群
                 target_group = case.status
                 
                 if case.status == CaseStatus.NM_PENDING.value:
@@ -145,12 +145,18 @@ class CaseService:
                         # CDS FAIL 或不可批次核准的草案需要回到待處理狀態
                         target_group = CaseStatus.NM_PENDING.value
                 
+                # RETURNED 和 PHARM_READY 狀態直接使用原狀態作為群組
+                # 確保這些狀態的案件都能正確加入到對應的群組
                 if target_group in groups:
                     groups[target_group].items.append(item)
                     groups[target_group].count += 1
+                else:
+                    # 如果 target_group 不在 groups 中，記錄警告
+                    import logging
+                    logging.warning(f"Case {case.id} with status {case.status} has target_group {target_group} not in groups. Available groups: {list(groups.keys())}")
             except Exception as e:
                 import logging
-                logging.error(f"Error processing case {case.id}: {e}", exc_info=True)
+                logging.error(f"Error processing case {case.id} (status: {case.status}): {e}", exc_info=True)
                 # 跳過有問題的案件，繼續處理其他案件
                 continue
         
@@ -184,6 +190,21 @@ class CaseService:
         batch_eligible = []
         my_claimed = []
         approved = []
+        physician_response = []  # 醫師回覆群組
+        
+        # 預先查詢所有案件的審查事件，以判斷是否有醫師回覆
+        case_ids = [case.id for case in cases]
+        review_events_result = await self.db.execute(
+            select(ReviewEvent)
+            .where(ReviewEvent.case_id.in_(case_ids))
+            .where(ReviewEvent.event_type.in_(['RETURN', 'RESPONSE']))
+        )
+        review_events = review_events_result.scalars().all()
+        
+        # 建立案件 ID 到審查事件的映射
+        case_has_return_or_response = set()
+        for event in review_events:
+            case_has_return_or_response.add(event.case_id)
         
         for case in cases:
             # 先確保從 snapshot 中提取缺少的 local_facts（如 eGFR）
@@ -198,6 +219,9 @@ class CaseService:
                 approved.append(item)
             elif case.owner_subject == subject:
                 my_claimed.append(item)
+            elif case.id in case_has_return_or_response:
+                # 有藥師退回或醫師回應的案件，優先分到「醫師回覆」群組
+                physician_response.append(item)
             elif not item.ruleEval.isBatchEligible or item.ruleEval.overallSeverity == Severity.FAIL:
                 exceptions.append(item)
             else:
@@ -205,6 +229,12 @@ class CaseService:
         
         return WorklistResponse(
             groups=[
+                WorklistGroup(
+                    groupKey="physicianResponse",
+                    title="醫師回覆",
+                    count=len(physician_response),
+                    items=physician_response
+                ),
                 WorklistGroup(
                     groupKey="exceptions",
                     title="需逐筆審查",

@@ -142,12 +142,20 @@ export function PharmacyWorklistPage() {
   }
 
   const groups = data?.groups || []
+  const physicianResponseGroup = groups.find(g => g.groupKey === 'physicianResponse')
   const batchEligibleGroup = groups.find(g => g.groupKey === 'batchEligible')
   const exceptionsGroup = groups.find(g => g.groupKey === 'exceptions')
   const approvedGroup = groups.find(g => g.groupKey === 'approved')
 
-  // Tab 數據：可批次核准、需逐筆審查、已批准
+  // Tab 數據：醫師回覆、可批次核准、需逐筆審查、已批准
   const tabData = [
+    {
+      label: '醫師回覆',
+      count: physicianResponseGroup?.count || 0,
+      items: physicianResponseGroup?.items || [],
+      showCheckbox: false,
+      badgeColor: 'warning' as const,
+    },
     {
       label: '可批次核准',
       count: batchEligibleGroup?.count || 0,
