@@ -108,22 +108,34 @@ class CaseService:
                 
                 # 分群邏輯：
                 # 1. NM_PENDING + CDS PASS → 自動建立草案，移至「已建立草案」
-                # 2. NM_DRAFTED + CDS FAIL → 移至「待核醫處理」
-                # 3. 其他 → 按原狀態分群
+                # 2. NM_DRAFTED + (CDS FAIL 或不可批次核准) → 移至「待核醫處理」
+                # 3. NM_DRAFTED + (CDS WARN 且可批次核准) → 留在「已建立草案」
+                # 4. 其他 → 按原狀態分群
                 target_group = case.status
                 
                 if case.status == CaseStatus.NM_PENDING.value:
-                    if item.ruleEval.overallSeverity == Severity.PASS:
-                        # CDS PASS 的待處理案件，嘗試自動建立草案
-                        auto_drafted = await self._auto_create_draft(case)
-                        if auto_drafted:
+                    # CDS PASS 或 (WARN 且可批次核准) 的待處理案件
+                    if item.ruleEval.overallSeverity == Severity.PASS or (item.ruleEval.overallSeverity == Severity.WARN and item.ruleEval.isBatchEligible):
+                        # 如果已經有草案，只需要更新狀態
+                        if case.draft_json:
+                            case.status = CaseStatus.NM_DRAFTED.value
+                            case.updated_at = datetime.now(timezone.utc).isoformat()
                             target_group = CaseStatus.NM_DRAFTED.value
                             # 重新取得 item 以反映新狀態
                             item = self._case_to_worklist_item(case)
+                        else:
+                            # 如果沒有草案，嘗試自動建立草案
+                            auto_drafted = await self._auto_create_draft(case)
+                            if auto_drafted:
+                                target_group = CaseStatus.NM_DRAFTED.value
+                                # 重新取得 item 以反映新狀態
+                                item = self._case_to_worklist_item(case)
                 
                 elif case.status == CaseStatus.NM_DRAFTED.value:
-                    if item.ruleEval.overallSeverity == Severity.FAIL:
-                        # CDS FAIL 的草案需要回到待處理狀態
+                    # 只有當 CDS 為 FAIL 或不可批次核准時，才移到待處理狀態
+                    # WARN 且可批次核准的案件應該留在「已建立草案」群組
+                    if item.ruleEval.overallSeverity == Severity.FAIL or not item.ruleEval.isBatchEligible:
+                        # CDS FAIL 或不可批次核准的草案需要回到待處理狀態
                         target_group = CaseStatus.NM_PENDING.value
                 
                 if target_group in groups:
@@ -710,6 +722,9 @@ class CaseService:
                 examDisplay=snapshot_data.get("examDisplay"),
                 weightKg=weight_kg,
                 hasAllergy=snapshot_data.get("hasAllergy"),
+                occurrenceDateTime=snapshot_data.get("occurrenceDateTime"),  # 期望執行時間
+                requesterDisplay=snapshot_data.get("requesterDisplay"),      # 開單醫師
+                reasonCodeDisplay=snapshot_data.get("reasonCodeDisplay"),   # 適應症說明
             )
             
             # 執行規則引擎

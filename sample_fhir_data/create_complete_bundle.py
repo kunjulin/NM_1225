@@ -201,9 +201,20 @@ def create_patient(p_data):
     }
 
 def create_service_request(p_data):
-    """Create ServiceRequest resource"""
+    """Create ServiceRequest resource
+    
+    依照 TW Core ServiceRequest Profile 建立檢查請求，包含：
+    - occurrenceDateTime: 期望執行時間
+    - requester: 開單醫師
+    - reasonCode: 適應症/診斷依據
+    """
     exam = p_data["exam"]
     cond_info = condition_map.get(exam["reasonCode"], {"display": exam["reason"], "text": exam["reason"]})
+    
+    # 計算期望執行時間（authoredOn 後 1 天的上午 9:00 或 10:00）
+    authored_on = datetime.now() - timedelta(days=1)
+    occurrence_datetime = (authored_on + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+    
     return {
         "fullUrl": f"urn:uuid:{exam['id']}",
         "resource": {
@@ -237,7 +248,8 @@ def create_service_request(p_data):
                 "reference": f"Patient/{p_data['id']}",
                 "display": p_data["name"]
             },
-            "authoredOn": (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S+08:00"),
+            "occurrenceDateTime": occurrence_datetime.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
+            "authoredOn": authored_on.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
             "requester": {
                 "reference": "Practitioner/clinical-doc-001",
                 "display": "臨床醫師"

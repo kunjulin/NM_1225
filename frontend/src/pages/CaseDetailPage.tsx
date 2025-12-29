@@ -424,6 +424,35 @@ export function CaseDetailPage() {
                           || '未指定'}
                       </Typography>
                     </Grid>
+                    {/* 期望執行時間 */}
+                    {snapshot.snapshot.occurrenceDateTime && (
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">期望執行時間</Typography>
+                        <Typography>
+                          {new Date(snapshot.snapshot.occurrenceDateTime).toLocaleString('zh-TW', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </Typography>
+                      </Grid>
+                    )}
+                    {/* 開單醫師 */}
+                    {snapshot.snapshot.requesterDisplay && (
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">開單醫師</Typography>
+                        <Typography>{snapshot.snapshot.requesterDisplay}</Typography>
+                      </Grid>
+                    )}
+                    {/* 適應症說明 */}
+                    {snapshot.snapshot.reasonCodeDisplay && (
+                      <Grid item xs={12}>
+                        <Typography variant="body2" color="text.secondary">適應症說明</Typography>
+                        <Typography>{snapshot.snapshot.reasonCodeDisplay}</Typography>
+                      </Grid>
+                    )}
                   </Grid>
                 </Grid>
                 
@@ -1504,6 +1533,7 @@ function ClinicalDataPanel({ snapshot }: ClinicalDataPanelProps) {
           </AccordionDetails>
         </Accordion>
       )}
+      
     </>
   )
 }

@@ -2,6 +2,12 @@
 # 核子醫學放射藥物用藥規則配置
 # 參考：2024 UPDATE OF THE NORTH AMERICAN CONSENSUS GUIDELINES FOR PEDIATRIC ADMINISTERED RADIOPHARMACEUTICAL ACTIVITIES
 
+# 預設給藥途徑（所有核醫檢查預設為靜脈注射）
+default_route:
+  system: "http://snomed.info/sct"
+  code: "47625008"
+  display: "Intravenous route"
+
 exams:
   BONE_SCAN:
     name: 骨骼掃描
@@ -10,6 +16,10 @@ exams:
     required_facts:
       - weight
     notes: 標準成人劑量 740 MBq
+    route:
+      system: "http://snomed.info/sct"
+      code: "47625008"
+      display: "Intravenous route"
     na2024:
       # 99mTc-MDP 依據 NA-2024 指引
       activity_per_kg: 9.3       # MBq/kg (0.25 mCi/kg) - 低端
@@ -25,6 +35,10 @@ exams:
       - weight
       - renal
     notes: 需考慮腎功能
+    route:
+      system: "http://snomed.info/sct"
+      code: "47625008"
+      display: "Intravenous route"
     na2024:
       # 99mTc-MAG3 依據 NA-2024 指引
       activity_per_kg: 3.7       # MBq/kg (0.10 mCi/kg) - 不含 flow study
@@ -39,6 +53,10 @@ exams:
     required_facts:
       - weight
     notes: 兒童常見檢查
+    route:
+      system: "http://snomed.info/sct"
+      code: "47625008"
+      display: "Intravenous route"
     na2024:
       # 99mTc-DMSA 依據 NA-2024 指引
       activity_per_kg: 1.85      # MBq/kg (0.05 mCi/kg) - 低端
@@ -53,6 +71,10 @@ exams:
     required_facts:
       - weight
     notes: 神經內分泌腫瘤診斷
+    route:
+      system: "http://snomed.info/sct"
+      code: "47625008"
+      display: "Intravenous route"
     na2024:
       # 123I-MIBG 依據 NA-2024 指引
       activity_per_kg: 5.2       # MBq/kg (0.14 mCi/kg) - 低端
@@ -67,6 +89,10 @@ exams:
     required_facts:
       - weight
     notes: 標準成人劑量 370 MBq
+    route:
+      system: "http://snomed.info/sct"
+      code: "47625008"
+      display: "Intravenous route"
     na2024:
       # 18F-FDG 依據 NA-2024 指引 (Body imaging)
       activity_per_kg: 2.96     # MBq/kg (0.08 mCi/kg) - 低端
@@ -87,6 +113,10 @@ exams:
       - weight
       - renal
     notes: GFR 測量
+    route:
+      system: "http://snomed.info/sct"
+      code: "47625008"
+      display: "Intravenous route"
     na2024:
       # 99mTc-DTPA 使用類似 MAG3 的劑量原則
       activity_per_kg: 3.7       # MBq/kg - 低端
@@ -101,6 +131,10 @@ exams:
     required_facts:
       - weight
     notes: 骨骼 PET/CT
+    route:
+      system: "http://snomed.info/sct"
+      code: "47625008"
+      display: "Intravenous route"
     na2024:
       # 18F-sodium fluoride 依據 NA-2024 指引
       activity_per_kg: 1.85      # MBq/kg (0.05 mCi/kg) - 低端
@@ -115,6 +149,10 @@ exams:
     required_facts:
       - weight
     notes: 神經內分泌腫瘤 PET
+    route:
+      system: "http://snomed.info/sct"
+      code: "47625008"
+      display: "Intravenous route"
     na2024:
       # 68Ga-DOTATATE 依據 NA-2024 指引
       activity_per_kg: 2.0       # MBq/kg (0.054 mCi/kg) - 低端

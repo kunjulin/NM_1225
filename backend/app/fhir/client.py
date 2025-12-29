@@ -500,7 +500,9 @@ class FHIRClient:
         patient_ref: str,
         service_request_ref: str,
         draft: dict,
-        requester_ref: str
+        requester_ref: str,
+        occurrence_datetime: Optional[str] = None,
+        route: Optional[dict] = None
     ) -> dict:
         """建構 MedicationRequest FHIR 資源
         
@@ -514,6 +516,10 @@ class FHIRClient:
         - requester (必須)
         - dosageInstruction.doseAndRate.doseQuantity.value 和 unit (MBq) (必須)
         - basedOn → ServiceRequest reference (必須)
+        
+        新增欄位:
+        - dosageInstruction.timing.event: 期望執行時間（來自 ServiceRequest.occurrenceDateTime）
+        - dosageInstruction.route: 給藥途徑（來自 rules_config.yaml）
         """
         from datetime import datetime, timezone
         
@@ -524,6 +530,38 @@ class FHIRClient:
         # 取得劑量值
         dose_value = draft.get("suggestedDose", {}).get("value")
         dose_unit = draft.get("suggestedDose", {}).get("unit", "MBq")
+        
+        # 建構 dosageInstruction
+        dosage_instruction = {
+            "doseAndRate": [
+                {
+                    "doseQuantity": {
+                        "value": dose_value,  # TW Core 必要欄位
+                        "unit": dose_unit,  # 必須使用 UCUM 'MBq'（D2 規範）
+                        "system": "http://unitsofmeasure.org",  # UCUM 系統
+                        "code": "MBq"  # UCUM 代碼
+                    }
+                }
+            ]
+        }
+        
+        # 新增 timing.event（期望執行時間）
+        if occurrence_datetime:
+            dosage_instruction["timing"] = {
+                "event": [occurrence_datetime]
+            }
+        
+        # 新增 route（給藥途徑）
+        if route:
+            dosage_instruction["route"] = {
+                "coding": [
+                    {
+                        "system": route.get("system", "http://snomed.info/sct"),
+                        "code": route.get("code", "47625008"),
+                        "display": route.get("display", "Intravenous route")
+                    }
+                ]
+            }
         
         # 建構 MedicationRequest（符合 TW Core Profile）
         medication_request = {
@@ -556,20 +594,7 @@ class FHIRClient:
             "basedOn": [
                 {"reference": service_request_ref}  # TW Core 必要欄位（D3 規範）
             ],
-            "dosageInstruction": [
-                {
-                    "doseAndRate": [
-                        {
-                            "doseQuantity": {
-                                "value": dose_value,  # TW Core 必要欄位
-                                "unit": dose_unit,  # 必須使用 UCUM 'MBq'（D2 規範）
-                                "system": "http://unitsofmeasure.org",  # UCUM 系統
-                                "code": "MBq"  # UCUM 代碼
-                            }
-                        }
-                    ]
-                }
-            ]
+            "dosageInstruction": [dosage_instruction]
         }
         
         # 只有在有 notes 時才添加（TW Core 可選欄位）

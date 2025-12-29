@@ -265,6 +265,31 @@ class FHIRSyncService:
         except Exception as e:
             logger.warning(f"Failed to get weight for {patient_ref}: {e}")
         
+        # 提取 TW Core ServiceRequest 相關欄位
+        # 1. occurrenceDateTime - 期望執行時間
+        occurrence_datetime = service_request.get("occurrenceDateTime")
+        
+        # 2. requester - 開單醫師
+        requester = service_request.get("requester", {})
+        requester_display = requester.get("display", "")
+        if not requester_display and requester.get("reference"):
+            # 如果沒有 display，嘗試從 reference 取得名稱（可選）
+            requester_display = requester.get("reference", "").split("/")[-1]
+        
+        # 3. reasonCode - 適應症/診斷依據
+        reason_codes = service_request.get("reasonCode", [])
+        reason_code_display = ""
+        if reason_codes:
+            first_reason = reason_codes[0]
+            # 優先使用 text，其次使用 coding[].display
+            reason_code_display = first_reason.get("text", "")
+            if not reason_code_display:
+                codings = first_reason.get("coding", [])
+                if codings:
+                    reason_code_display = codings[0].get("display", "")
+        
+        logger.info(f"ServiceRequest {sr_id}: occurrenceDateTime='{occurrence_datetime}', requester='{requester_display}', reasonCode='{reason_code_display}'")
+        
         # 建立 snapshot
         snapshot = {
             "patientName": patient_name,
@@ -273,6 +298,10 @@ class FHIRSyncService:
             "examDisplay": exam_display,
             "weightKg": weight_kg,
             "hasAllergy": None,  # 可以之後補充
+            # TW Core ServiceRequest 相關欄位
+            "occurrenceDateTime": occurrence_datetime,
+            "requesterDisplay": requester_display,
+            "reasonCodeDisplay": reason_code_display,
         }
         
         # 建立 OrderCase
@@ -337,14 +366,14 @@ class FHIRSyncService:
                 
                 order_case.draft_json = json.dumps(draft_data, ensure_ascii=False)
                 
-                # 如果 CDS 評估為 PASS（有體重且其他條件都滿足），狀態設為 NM_DRAFTED
-                # 否則保持為 NM_PENDING，等待核醫醫師處理（例如輸入體重）
-                if rule_eval.overallSeverity == Severity.PASS:
+                # 如果 CDS 評估為 PASS 或 (WARN 且可批次核准)，狀態設為 NM_DRAFTED
+                # FAIL 或不可批次核准的案件保持為 NM_PENDING，等待核醫醫師處理
+                if rule_eval.overallSeverity == Severity.PASS or (rule_eval.overallSeverity == Severity.WARN and rule_eval.isBatchEligible):
                     order_case.status = CaseStatus.NM_DRAFTED.value
-                    logger.info(f"Auto-created draft for OrderCase {case_id} (CDS PASS)")
+                    logger.info(f"Auto-created draft for OrderCase {case_id} (CDS {rule_eval.overallSeverity.value}, batchEligible={rule_eval.isBatchEligible})")
                 else:
-                    # 即使 CDS 不是 PASS（例如缺少體重），也建立草案，但狀態保持為 NM_PENDING
-                    logger.info(f"Auto-created draft for OrderCase {case_id} (CDS {rule_eval.overallSeverity.value}, waiting for NM physician)")
+                    # CDS FAIL 或不可批次核准的案件，建立草案但狀態保持為 NM_PENDING
+                    logger.info(f"Auto-created draft for OrderCase {case_id} (CDS {rule_eval.overallSeverity.value}, batchEligible={rule_eval.isBatchEligible}, waiting for NM physician)")
                 
                 order_case.updated_at = now
             else:

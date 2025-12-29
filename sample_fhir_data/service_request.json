@@ -29,6 +29,7 @@
     "reference": "Patient/patient-1007",
     "display": "王大明"
   },
+  "occurrenceDateTime": "2024-12-26T10:00:00+08:00",
   "authoredOn": "2024-12-25T09:00:00+08:00",
   "requester": {
     "reference": "Practitioner/dr-001",

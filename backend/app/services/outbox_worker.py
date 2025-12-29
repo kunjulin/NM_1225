@@ -147,6 +147,7 @@ class OutboxWorker:
     ) -> dict | None:
         """建立 MedicationRequest 到 FHIR Server"""
         draft = json.loads(case.draft_json or "{}")
+        snapshot = json.loads(case.snapshot_json or "{}")
         
         # 驗證必要欄位
         if not draft.get("radiopharmaceuticalCode"):
@@ -162,12 +163,25 @@ class OutboxWorker:
         # 取得 requester_ref：從 ReviewEvent 查詢批准者，再從 User 取得 practitioner_ref
         requester_ref = await self._get_requester_ref(db, case.id)
         
+        # 從 snapshot 取得 TW Core ServiceRequest 相關欄位
+        occurrence_datetime = snapshot.get("occurrenceDateTime")
+        exam_code = snapshot.get("examCode") or draft.get("examCode")
+        
+        # 從 rules_config.yaml 取得給藥途徑
+        from app.rules.config import RulesConfig
+        rules_config = RulesConfig()
+        route = rules_config.get_route(exam_code) if exam_code else None
+        
+        logger.info(f"Building MedicationRequest for case {case.id}: occurrenceDateTime='{occurrence_datetime}', examCode='{exam_code}', route={route}")
+        
         # 建構 FHIR 資源
         medication_request = self.fhir_client.build_medication_request(
             patient_ref=case.patient_ref,
             service_request_ref=case.service_request_ref,
             draft=draft,
-            requester_ref=requester_ref
+            requester_ref=requester_ref,
+            occurrence_datetime=occurrence_datetime,
+            route=route
         )
         
         logger.info(f"Creating MedicationRequest for case {case.id} to {self.settings.fhir_base_url}")

@@ -133,4 +133,31 @@ class RulesConfig:
     def get_batch_policy(self) -> dict:
         """取得批次核准政策"""
         return self.config.get("batch_policy", {})
+    
+    def get_route(self, exam_code: str) -> dict:
+        """取得給藥途徑設定
+        
+        Args:
+            exam_code: 檢查代碼
+            
+        Returns:
+            給藥途徑字典，包含:
+            - system: 代碼系統 (SNOMED CT)
+            - code: 代碼
+            - display: 顯示名稱
+            
+        如果檢查項目沒有設定 route，則返回預設的靜脈注射 route
+        """
+        # 預設靜脈注射 route
+        default_route = self.config.get("default_route", {
+            "system": "http://snomed.info/sct",
+            "code": "47625008",
+            "display": "Intravenous route"
+        })
+        
+        exam = self.get_exam_config(exam_code)
+        if exam and "route" in exam:
+            return exam["route"]
+        
+        return default_route
 

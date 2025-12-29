@@ -66,6 +66,9 @@ export interface SnapshotSummary {
   examDisplay?: string
   weightKg?: number
   hasAllergy?: boolean
+  occurrenceDateTime?: string   // 期望執行時間
+  requesterDisplay?: string     // 開單醫師名稱
+  reasonCodeDisplay?: string    // 適應症說明
 }
 
 export interface CandidateFact {
@@ -265,6 +268,10 @@ export interface SnapshotData {
   procedures: ProcedureInfo[]         // 處置紀錄
   labResults?: LabResultsGrouped      // 分類檢驗結果
   allergyList: AllergyInfo[]          // 過敏史 (結構化)
+  // TW Core ServiceRequest 相關欄位
+  occurrenceDateTime?: string         // 期望執行時間
+  requesterDisplay?: string           // 開單醫師名稱
+  reasonCodeDisplay?: string          // 適應症說明
 }
 
 export interface PatientSnapshot {

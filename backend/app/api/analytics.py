@@ -170,6 +170,7 @@ async def export_cases_csv(
         "病患姓名",
         "病患ID", 
         "檢查名稱",
+        "使用時間",
         "劑量",
         "建立醫師",
         "審查藥師",
@@ -188,6 +189,16 @@ async def export_cases_csv(
             dose_value = dose.get("value", "")
             dose_unit = dose.get("unit", "MBq")
             dose_str = f"{dose_value} {dose_unit}" if dose_value else ""
+        
+        # 取得使用時間（occurrenceDateTime）
+        occurrence_datetime = snapshot.get("occurrenceDateTime", "")
+        occurrence_str = ""
+        if occurrence_datetime:
+            try:
+                dt = datetime.fromisoformat(occurrence_datetime.replace('Z', '+00:00'))
+                occurrence_str = dt.strftime("%Y/%m/%d %H:%M")
+            except:
+                occurrence_str = occurrence_datetime
         
         # 取得審查資訊
         submit_subject = submit_events.get(case.id, "")
@@ -211,6 +222,7 @@ async def export_cases_csv(
             snapshot.get("patientName", ""),
             snapshot.get("patientId", ""),
             snapshot.get("examDisplay", ""),
+            occurrence_str,
             dose_str,
             submit_actor_name,
             approve_actor_name,

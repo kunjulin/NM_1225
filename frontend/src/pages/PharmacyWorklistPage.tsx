@@ -294,6 +294,7 @@ function WorklistTable({
             )}
             <TableCell>病人</TableCell>
             <TableCell>檢查</TableCell>
+            <TableCell>期望執行時間</TableCell>
             <TableCell>CDS</TableCell>
             <TableCell>Flags</TableCell>
             <TableCell>{showApprovedDate ? '批准時間' : '更新時間'}</TableCell>
@@ -325,6 +326,21 @@ function WorklistTable({
               </TableCell>
               <TableCell>
                 {item.snapshotSummary.examDisplay || item.snapshotSummary.examCode || '-'}
+              </TableCell>
+              <TableCell>
+                {item.snapshotSummary.occurrenceDateTime ? (
+                  <Typography variant="caption">
+                    {new Date(item.snapshotSummary.occurrenceDateTime).toLocaleString('zh-TW', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </Typography>
+                ) : (
+                  '-'
+                )}
               </TableCell>
               <TableCell>
                 <Chip

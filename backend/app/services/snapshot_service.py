@@ -317,9 +317,13 @@ class SnapshotService:
             # 取得 Patient 基本資訊
             patient = await self.fhir_client.get_patient(case.patient_ref)
             
-            # 取得 ServiceRequest 以提取檢查資訊
+            # 取得 ServiceRequest 以提取檢查資訊和 TW Core 欄位
             exam_code = None
             exam_display = None
+            occurrence_datetime = None
+            requester_display = None
+            reason_code_display = None
+            
             if case.service_request_ref:
                 try:
                     service_request = await self.fhir_client.get_service_request(case.service_request_ref)
@@ -343,6 +347,28 @@ class SnapshotService:
                         }
                         
                         exam_code = snomed_to_exam_code.get(snomed_code, snomed_code)  # 如果沒有映射，使用原始代碼
+                        
+                        # 提取 TW Core ServiceRequest 相關欄位
+                        # 1. occurrenceDateTime - 期望執行時間
+                        occurrence_datetime = service_request.get("occurrenceDateTime")
+                        
+                        # 2. requester - 開單醫師
+                        requester = service_request.get("requester", {})
+                        requester_display = requester.get("display", "")
+                        if not requester_display and requester.get("reference"):
+                            # 如果沒有 display，嘗試從 reference 取得名稱（可選）
+                            requester_display = requester.get("reference", "").split("/")[-1]
+                        
+                        # 3. reasonCode - 適應症/診斷依據
+                        reason_codes = service_request.get("reasonCode", [])
+                        if reason_codes:
+                            first_reason = reason_codes[0]
+                            # 優先使用 text，其次使用 coding[].display
+                            reason_code_display = first_reason.get("text", "")
+                            if not reason_code_display:
+                                codings = first_reason.get("coding", [])
+                                if codings:
+                                    reason_code_display = codings[0].get("display", "")
                 except Exception as e:
                     import logging
                     logging.getLogger(__name__).warning(f"Failed to fetch ServiceRequest {case.service_request_ref}: {e}")
@@ -377,6 +403,9 @@ class SnapshotService:
                 name_obj = patient["name"][0]
                 patient_name = name_obj.get("text") or f"{name_obj.get('family', '')} {' '.join(name_obj.get('given', []))}"
             
+            # 保留舊快照中的 TW Core ServiceRequest 欄位（如果新資料沒有）
+            old_snapshot_data = json.loads(case.snapshot_json or "{}") if case.snapshot_json else {}
+            
             snapshot = {
                 # 原有欄位
                 "patientName": patient_name,
@@ -395,6 +424,11 @@ class SnapshotService:
                 "procedures": self._parse_procedures(procedures),
                 "labResults": self._parse_lab_results(lab_results),
                 "allergyList": self._parse_allergies(allergies),
+                
+                # TW Core ServiceRequest 相關欄位（優先使用新提取的，否則保留舊的）
+                "occurrenceDateTime": occurrence_datetime or old_snapshot_data.get("occurrenceDateTime"),
+                "requesterDisplay": requester_display or old_snapshot_data.get("requesterDisplay"),
+                "reasonCodeDisplay": reason_code_display or old_snapshot_data.get("reasonCodeDisplay"),
             }
             
             if weight_obs:
@@ -437,6 +471,10 @@ class SnapshotService:
             procedures=[ProcedureInfo(**p) for p in snapshot_data.get("procedures", [])],
             labResults=lab_results,
             allergyList=[AllergyInfo(**a) for a in snapshot_data.get("allergyList", [])],
+            # TW Core ServiceRequest 相關欄位
+            occurrenceDateTime=snapshot_data.get("occurrenceDateTime"),
+            requesterDisplay=snapshot_data.get("requesterDisplay"),
+            reasonCodeDisplay=snapshot_data.get("reasonCodeDisplay"),
         )
     
     def _parse_encounters(self, encounters: list[dict]) -> list[dict]:

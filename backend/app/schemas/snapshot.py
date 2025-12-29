@@ -180,6 +180,11 @@ class SnapshotData(BaseModel):
     procedures: list[ProcedureInfo] = []      # 處置紀錄
     labResults: Optional[LabResultsGrouped] = None  # 分類檢驗結果
     allergyList: list[AllergyInfo] = []       # 過敏史 (結構化)
+    
+    # TW Core ServiceRequest 相關欄位
+    occurrenceDateTime: Optional[str] = None  # 期望執行時間
+    requesterDisplay: Optional[str] = None    # 開單醫師名稱
+    reasonCodeDisplay: Optional[str] = None   # 適應症說明
 
 
 class DoseValue(BaseModel):

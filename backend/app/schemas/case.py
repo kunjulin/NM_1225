@@ -40,6 +40,7 @@ class SnapshotSummary(BaseModel):
     examDisplay: Optional[str] = None
     weightKg: Optional[float] = None
     hasAllergy: Optional[bool] = None
+    occurrenceDateTime: Optional[str] = None  # 期望執行時間
 
 
 class WorklistItem(BaseModel):
