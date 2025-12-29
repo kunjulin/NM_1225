@@ -82,6 +82,32 @@ export const theme = createTheme({
     borderRadius: 8,
   },
   components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        html: {
+          width: '100%',
+          height: '100%',
+          boxSizing: 'border-box',
+        },
+        body: {
+          width: '100%',
+          height: '100%',
+          margin: 0,
+          padding: 0,
+          boxSizing: 'border-box',
+          overflowX: 'hidden',
+        },
+        '#root': {
+          width: '100%',
+          minHeight: '100%',
+          boxSizing: 'border-box',
+          overflowX: 'hidden',
+        },
+        '*': {
+          boxSizing: 'border-box',
+        },
+      },
+    },
     MuiButton: {
       styleOverrides: {
         root: {
@@ -149,4 +175,3 @@ export const statusColors = {
   SYNCED: '#2E7D32',
   SYNC_FAILED: '#C62828',
 }
-

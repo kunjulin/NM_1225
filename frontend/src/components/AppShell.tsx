@@ -162,12 +162,12 @@ export function AppShell() {
   )
 
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box sx={{ display: 'flex', width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
       <AppBar
         position="fixed"
         sx={{
-          width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
-          ml: { sm: `${DRAWER_WIDTH}px` },
+          width: { xs: '100%', sm: `calc(100% - ${DRAWER_WIDTH}px)` },
+          ml: { xs: 0, sm: `${DRAWER_WIDTH}px` },
         }}
       >
         <Toolbar>
@@ -296,11 +296,14 @@ export function AppShell() {
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
-          width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
-          mt: 8,
+          p: { xs: 2, sm: 3 },
+          width: { xs: '100%', sm: `calc(100% - ${DRAWER_WIDTH}px)` },
+          maxWidth: '100%',
+          mt: { xs: 7, sm: 8 },
           minHeight: '100vh',
           bgcolor: 'background.default',
+          boxSizing: 'border-box',
+          overflowX: 'hidden',
         }}
       >
         <Outlet />

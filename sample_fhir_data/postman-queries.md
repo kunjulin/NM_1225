@@ -329,3 +329,4 @@ Accept: application/fhir+json
 4. **大小寫敏感**: 某些實現可能對大小寫敏感
 
 
+

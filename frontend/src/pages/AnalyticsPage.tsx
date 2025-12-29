@@ -142,12 +142,24 @@ export function AnalyticsPage() {
   }
 
   return (
-    <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+    <Box sx={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
+      <Box 
+        display="flex" 
+        flexDirection={{ xs: 'column', sm: 'row' }}
+        justifyContent="space-between" 
+        alignItems={{ xs: 'flex-start', sm: 'center' }}
+        gap={2}
+        mb={3}
+      >
         <Typography variant="h5" fontWeight={600}>
           分析儀表板
         </Typography>
-        <Stack direction="row" spacing={2} alignItems="center">
+        <Stack 
+          direction={{ xs: 'column', sm: 'row' }} 
+          spacing={2} 
+          alignItems={{ xs: 'stretch', sm: 'center' }}
+          sx={{ width: { xs: '100%', sm: 'auto' } }}
+        >
           <TextField
             type="date"
             size="small"
@@ -155,6 +167,7 @@ export function AnalyticsPage() {
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
           />
           <TextField
             type="date"
@@ -163,12 +176,14 @@ export function AnalyticsPage() {
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
           />
           <Button 
             variant="outlined" 
             startIcon={downloading ? <CircularProgress size={20} /> : <DownloadIcon />}
             onClick={handleExportCSV}
             disabled={downloading}
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
           >
             {downloading ? '匯出中...' : '匯出 CSV'}
           </Button>
@@ -176,6 +191,7 @@ export function AnalyticsPage() {
             variant="outlined"
             startIcon={<SyncLogIcon />}
             onClick={() => navigate('/analytics/sync-logs')}
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
           >
             上傳記錄
           </Button>
@@ -183,7 +199,7 @@ export function AnalyticsPage() {
       </Box>
 
       {/* KPI Cards */}
-      <Grid container spacing={3} mb={3}>
+      <Grid container spacing={3} mb={3} sx={{ width: '100%', margin: 0 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
@@ -235,7 +251,7 @@ export function AnalyticsPage() {
       </Grid>
 
       {/* Charts */}
-      <Grid container spacing={3}>
+      <Grid container spacing={3} sx={{ width: '100%', margin: 0 }}>
         {/* 退回原因分佈 */}
         <Grid item xs={12} md={6}>
           <Card>
