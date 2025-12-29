@@ -43,6 +43,8 @@ class CaseService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.rule_engine = RuleEngine()
+        from app.services.snapshot_service import SnapshotService
+        self.snapshot_service = SnapshotService(db)
     
     async def get_nm_worklist(
         self, 
@@ -104,6 +106,11 @@ class CaseService:
         
         for case in cases:
             try:
+                # 先確保從 snapshot 中提取缺少的 local_facts（如 eGFR）
+                await self.snapshot_service._extract_facts_from_snapshot(case)
+                # 重新從資料庫載入 case 以取得更新後的 local_facts_json
+                await self.db.refresh(case)
+                
                 item = self._case_to_worklist_item(case)
                 
                 # 分群邏輯：
@@ -179,6 +186,11 @@ class CaseService:
         approved = []
         
         for case in cases:
+            # 先確保從 snapshot 中提取缺少的 local_facts（如 eGFR）
+            await self.snapshot_service._extract_facts_from_snapshot(case)
+            # 重新從資料庫載入 case 以取得更新後的 local_facts_json
+            await self.db.refresh(case)
+            
             item = self._case_to_worklist_item(case)
             
             # 已批准的案件分到 approved 群組

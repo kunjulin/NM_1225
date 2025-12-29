@@ -92,6 +92,9 @@ class SnapshotService:
                 logger.info(f"Snapshot for case {case_id} exists but lacks clinical data, refreshing...")
                 await self._refresh_snapshot(case)
         
+        # 從現有快照中提取並填充缺少的 local_facts（如果還沒有）
+        await self._extract_facts_from_snapshot(case)
+        
         # 解析快照
         snapshot_data = json.loads(case.snapshot_json or "{}")
         snapshot = self._parse_snapshot_data(snapshot_data)
@@ -154,6 +157,9 @@ class SnapshotService:
         
         # 查詢審查事件歷程（藥師退回、醫師回應等）
         review_events = await self._get_review_events(case_id)
+        
+        # 確保所有變更都被寫入資料庫（包括 _extract_facts_from_snapshot 的變更）
+        await self.db.flush()
         
         return PatientSnapshotResponse(
             caseId=case_id,
@@ -437,12 +443,150 @@ class SnapshotService:
             snapshot["hasAllergy"] = len(allergies) > 0
             
             case.snapshot_json = json.dumps(snapshot)
+            
+            # 自動從 FHIR 資料提取關鍵臨床資料並加入到 local_facts（如果還沒有手動輸入的資料）
+            original_local_facts_json = case.local_facts_json
+            local_facts = json.loads(original_local_facts_json or "{}")
+            local_facts_updated = False
+            
+            # 自動提取體重（如果還沒有手動輸入）
+            if "weightKg" not in local_facts and weight_obs:
+                value_quantity = weight_obs.get("valueQuantity", {})
+                weight_value = value_quantity.get("value")
+                weight_unit = value_quantity.get("unit")
+                effective_date = weight_obs.get("effectiveDateTime")
+                
+                if weight_value is not None:
+                    local_facts["weightKg"] = {
+                        "value": weight_value,
+                        "unit": weight_unit or "kg",
+                        "asOf": effective_date or datetime.now(timezone.utc).isoformat(),
+                        "source": SourceType.FHIR_RESOURCE.value,
+                        "sourceRef": weight_obs.get("id"),
+                    }
+                    local_facts_updated = True
+            
+            # 自動提取 eGFR（如果還沒有手動輸入）
+            if "eGFR" not in local_facts:
+                # 從 lab_results 中提取最新的 eGFR (LOINC 33914-3)
+                egfr_observations = lab_results.get("33914-3", [])
+                if egfr_observations:
+                    # 取最新的 eGFR（已經按日期排序，第一個是最新的）
+                    latest_egfr = egfr_observations[0]
+                    value_quantity = latest_egfr.get("valueQuantity", {})
+                    egfr_value = value_quantity.get("value")
+                    egfr_unit = value_quantity.get("unit")
+                    effective_date = latest_egfr.get("effectiveDateTime")
+                    
+                    if egfr_value is not None:
+                        local_facts["eGFR"] = {
+                            "value": egfr_value,
+                            "unit": egfr_unit,
+                            "asOf": effective_date or datetime.now(timezone.utc).isoformat(),
+                            "source": SourceType.FHIR_RESOURCE.value,
+                            "sourceRef": latest_egfr.get("id"),
+                        }
+                        local_facts_updated = True
+            
+            # 如果有更新 local_facts，保存到資料庫
+            if local_facts_updated:
+                case.local_facts_json = json.dumps(local_facts)
+                await self.db.flush()
+            
             case.updated_at = datetime.now(timezone.utc).isoformat()
             
         except Exception as e:
             # 擷取失敗時保留舊快照，記錄錯誤
             import logging
             logging.getLogger(__name__).error(f"Failed to refresh snapshot for case {case.id}: {e}")
+    
+    async def _extract_facts_from_snapshot(self, case: OrderCase):
+        """從現有 snapshot 中提取並填充缺少的 local_facts
+        
+        這個方法用於處理已經存在快照但 local_facts 中缺少資料的情況
+        """
+        try:
+            snapshot_data = json.loads(case.snapshot_json or "{}")
+            local_facts = json.loads(case.local_facts_json or "{}")
+            local_facts_updated = False
+            
+            # 從 snapshot 的 labResults 中提取 eGFR（如果 local_facts 中還沒有）
+            if "eGFR" not in local_facts:
+                lab_results_data = snapshot_data.get("labResults", {})
+                if lab_results_data:
+                    # labResults 是分類的結構 {renal: [], hepatic: [], ...}
+                    renal_labs = lab_results_data.get("renal", [])
+                    # 尋找 code 為 "33914-3" 的 eGFR 資料
+                    # 找出所有 eGFR 資料，然後選擇最新的（按 effectiveDateTime 排序）
+                    egfr_labs = [lab for lab in renal_labs if lab.get("code") == "33914-3"]
+                    if egfr_labs:
+                        # 按日期排序（最新的在前），如果沒有日期則放在最後
+                        egfr_labs.sort(
+                            key=lambda x: x.get("effectiveDateTime") or "",
+                            reverse=True
+                        )
+                        latest_egfr = egfr_labs[0]
+                        egfr_value = latest_egfr.get("value")
+                        egfr_unit = latest_egfr.get("unit")
+                        effective_date = latest_egfr.get("effectiveDateTime")
+                        lab_id = latest_egfr.get("id")
+                        
+                        if egfr_value is not None:
+                            local_facts["eGFR"] = {
+                                "value": egfr_value,
+                                "unit": egfr_unit,
+                                "asOf": effective_date or datetime.now(timezone.utc).isoformat(),
+                                "source": SourceType.FHIR_RESOURCE.value,
+                                "sourceRef": lab_id,
+                            }
+                            local_facts_updated = True
+            
+            # 從 snapshot 中提取體重（如果 local_facts 中還沒有）
+            if "weightKg" not in local_facts:
+                weight_kg = snapshot_data.get("weightKg")
+                if weight_kg is not None:
+                    # 從 observations 中找到體重 observation 以取得更多資訊
+                    observations = snapshot_data.get("observations", [])
+                    weight_obs = None
+                    if observations:
+                        # 尋找體重 observation（LOINC 29463-7）
+                        for obs in observations:
+                            code = obs.get("code", {})
+                            codings = code.get("coding", [])
+                            for coding in codings:
+                                if coding.get("code") == "29463-7":
+                                    weight_obs = obs
+                                    break
+                            if weight_obs:
+                                break
+                    
+                    if weight_obs:
+                        effective_date = weight_obs.get("effectiveDateTime")
+                        obs_id = weight_obs.get("id")
+                        value_quantity = weight_obs.get("valueQuantity", {})
+                        weight_unit = value_quantity.get("unit", "kg")
+                    else:
+                        effective_date = None
+                        obs_id = None
+                        weight_unit = "kg"
+                    
+                    local_facts["weightKg"] = {
+                        "value": weight_kg,
+                        "unit": weight_unit,
+                        "asOf": effective_date or datetime.now(timezone.utc).isoformat(),
+                        "source": SourceType.FHIR_RESOURCE.value,
+                        "sourceRef": obs_id,
+                    }
+                    local_facts_updated = True
+            
+            # 如果有更新 local_facts，保存到資料庫
+            if local_facts_updated:
+                case.local_facts_json = json.dumps(local_facts)
+                await self.db.flush()
+        except Exception as e:
+            # 提取失敗不影響主流程，只記錄錯誤
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to extract facts from snapshot for case {case.id}: {e}")
     
     def _parse_snapshot_data(self, snapshot_data: dict) -> SnapshotData:
         """解析快照資料為結構化格式"""
