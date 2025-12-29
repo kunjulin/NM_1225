@@ -188,7 +188,7 @@ export function PharmacyWorklistPage() {
           藥師工作清單
         </Typography>
         <Stack direction="row" spacing={2}>
-          {selectedIds.size > 0 && tabValue === 0 && (
+          {selectedIds.size > 0 && tabValue === 1 && (
             <Button
               variant="contained"
               color="success"
