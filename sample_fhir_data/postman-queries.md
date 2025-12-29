@@ -328,3 +328,4 @@ Accept: application/fhir+json
 3. **FHIR Server 查詢實現差異**: 某些 FHIR Server 可能只匹配 coding.code 而不匹配 text/display
 4. **大小寫敏感**: 某些實現可能對大小寫敏感
 
+
