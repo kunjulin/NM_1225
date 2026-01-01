@@ -260,3 +260,29 @@ async def get_llm_error_logs(
         ],
         "total": len(results),
     }
+
+
+@router.delete("/llm/error-logs")
+async def clear_llm_error_logs(
+    current_user: CurrentUser = Depends(get_current_user),
+    db = Depends(get_db),
+):
+    """清除所有 LLM 分析記錄
+    
+    僅管理員可清除
+    """
+    # 檢查權限：僅 ADMIN 可清除
+    if current_user.acting_role.value != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只有管理員可以清除錯誤記錄"
+        )
+    
+    llm_service = LLMService(db)
+    deleted_count = await llm_service.clear_all_analyses()
+    
+    return {
+        "success": True,
+        "message": f"已清除 {deleted_count} 筆 LLM 分析記錄",
+        "deleted_count": deleted_count,
+    }

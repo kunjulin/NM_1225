@@ -15,8 +15,14 @@ from sqlalchemy import select, desc, and_
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from app.database import get_database_url
+from app.config import get_settings
 from app.models.llm_analysis import LLMAnalysis
+
+
+def get_database_url() -> str:
+    """取得資料庫 URL（轉換為 async 格式）"""
+    settings = get_settings()
+    return settings.database_url.replace("sqlite:///", "sqlite+aiosqlite:///")
 
 
 async def debug_case_analysis(case_id: str):

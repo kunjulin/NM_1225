@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Optional, Any
 
 import httpx
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -642,6 +642,16 @@ class LLMService:
             ))
         
         return results
+    
+    async def clear_all_analyses(self) -> int:
+        """清除所有 LLM 分析記錄
+        
+        Returns:
+            int: 被清除的記錄數
+        """
+        result = await self.db.execute(delete(LLMAnalysis))
+        await self.db.commit()
+        return result.rowcount
     
     def _build_input_payload(self, snapshot: PatientSnapshotResponse) -> dict:
         """組合 LLM 輸入 payload

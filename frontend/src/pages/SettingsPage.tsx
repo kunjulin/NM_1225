@@ -108,6 +108,30 @@ export function SettingsPage() {
     },
     enabled: showErrorLogs, // 只在展開時載入
   })
+
+  // Clear error logs mutation
+  const clearErrorLogsMutation = useMutation({
+    mutationFn: async () => {
+      apiClient.setAuthHeaders(getAuthHeaders())
+      return apiClient.delete<{ success: boolean; message: string; deleted_count: number }>('/settings/llm/error-logs')
+    },
+    onSuccess: (data) => {
+      setSnackbar({
+        open: true,
+        message: data.message,
+        severity: 'success',
+      })
+      // 清除後重新載入錯誤日誌（應該會是空的）
+      queryClient.invalidateQueries({ queryKey: ['llm-error-logs'] })
+    },
+    onError: (error: any) => {
+      setSnackbar({
+        open: true,
+        message: error.message || '清除失敗',
+        severity: 'error',
+      })
+    },
+  })
   
   // Initialize form with current settings
   useEffect(() => {
@@ -555,13 +579,28 @@ export function SettingsPage() {
                     <Typography variant="body2" color="text.secondary">
                       顯示最近 {errorLogs.total} 筆失敗的分析記錄
                     </Typography>
-                    <Button
-                      size="small"
-                      startIcon={<RefreshIcon />}
-                      onClick={() => refetchErrorLogs()}
-                    >
-                      重新整理
-                    </Button>
+                    <Stack direction="row" spacing={1}>
+                      <Button
+                        size="small"
+                        startIcon={<RefreshIcon />}
+                        onClick={() => refetchErrorLogs()}
+                      >
+                        重新整理
+                      </Button>
+                      <Button
+                        size="small"
+                        color="error"
+                        startIcon={<ResetIcon />}
+                        onClick={() => {
+                          if (window.confirm('確定要清除所有 LLM 分析記錄嗎？此操作無法復原。')) {
+                            clearErrorLogsMutation.mutate()
+                          }
+                        }}
+                        disabled={clearErrorLogsMutation.isPending}
+                      >
+                        重置
+                      </Button>
+                    </Stack>
                   </Box>
                   
                   <TableContainer component={Paper} variant="outlined">
