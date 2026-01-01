@@ -554,6 +554,7 @@ export interface LLMSettings {
   timeout_seconds: number
   max_tokens: number
   temperature: number
+  disable_thinking_mode: boolean
   is_configured: boolean
 }
 
@@ -567,6 +568,7 @@ export interface LLMSettingsUpdate {
   timeout_seconds: number
   max_tokens: number
   temperature: number
+  disable_thinking_mode: boolean
 }
 
 export interface LLMTestConnectionResponse {

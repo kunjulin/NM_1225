@@ -66,6 +66,7 @@ export function SettingsPage() {
     timeout_seconds: 60,
     max_tokens: 4096,
     temperature: 0.1,
+    disable_thinking_mode: false,
   })
   
   const [showApiKey, setShowApiKey] = useState(false)
@@ -121,6 +122,7 @@ export function SettingsPage() {
         timeout_seconds: settings.timeout_seconds,
         max_tokens: settings.max_tokens,
         temperature: settings.temperature,
+        disable_thinking_mode: settings.disable_thinking_mode,
       })
     }
   }, [settings])
@@ -197,6 +199,7 @@ export function SettingsPage() {
         timeout_seconds: settings.timeout_seconds,
         max_tokens: settings.max_tokens,
         temperature: settings.temperature,
+        disable_thinking_mode: settings.disable_thinking_mode,
       })
     }
   }
@@ -380,6 +383,26 @@ export function SettingsPage() {
                 />
               }
               label="自動分析（進入案件詳情頁時自動執行 LLM 分析）"
+            />
+            
+            {/* Disable Thinking Mode */}
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={formData.disable_thinking_mode}
+                  onChange={(e) => setFormData({ ...formData, disable_thinking_mode: e.target.checked })}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body1">
+                    禁用 Thinking Mode
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    對於支援 thinking mode 的模型（如 Qwen 系列），啟用此選項將禁用 thinking mode 以獲得直接輸出和更好的性能
+                  </Typography>
+                </Box>
+              }
             />
             
             <Divider />

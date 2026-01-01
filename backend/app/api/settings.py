@@ -27,6 +27,7 @@ class LLMSettingsRequest(BaseModel):
     timeout_seconds: float = Field(default=60.0, description="請求超時秒數")
     max_tokens: int = Field(default=4096, description="最大 tokens")
     temperature: float = Field(default=0.1, description="Temperature 參數")
+    disable_thinking_mode: bool = Field(default=False, description="是否禁用 thinking mode")
 
 
 class LLMSettingsResponse(BaseModel):
@@ -40,6 +41,7 @@ class LLMSettingsResponse(BaseModel):
     timeout_seconds: float
     max_tokens: int
     temperature: float
+    disable_thinking_mode: bool
     is_configured: bool
 
 
@@ -87,6 +89,7 @@ async def get_llm_settings(
         timeout_seconds=settings.timeout_seconds,
         max_tokens=settings.max_tokens,
         temperature=settings.temperature,
+        disable_thinking_mode=settings.disable_thinking_mode,
         is_configured=settings.is_configured(),
     )
 
@@ -124,6 +127,7 @@ async def update_llm_settings(
         timeout_seconds=request.timeout_seconds,
         max_tokens=request.max_tokens,
         temperature=request.temperature,
+        disable_thinking_mode=request.disable_thinking_mode,
     )
     
     await llm_service.save_settings(settings)
@@ -138,6 +142,7 @@ async def update_llm_settings(
         timeout_seconds=settings.timeout_seconds,
         max_tokens=settings.max_tokens,
         temperature=settings.temperature,
+        disable_thinking_mode=settings.disable_thinking_mode,
         is_configured=settings.is_configured(),
     )
 

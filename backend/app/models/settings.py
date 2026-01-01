@@ -47,6 +47,7 @@ class LLMSettingsKeys:
     TIMEOUT_SECONDS = "llm.timeout_seconds"     # 請求超時秒數
     MAX_TOKENS = "llm.max_tokens"               # 最大 tokens
     TEMPERATURE = "llm.temperature"             # Temperature 參數
+    DISABLE_THINKING_MODE = "llm.disable_thinking_mode"  # 是否禁用 thinking mode
 
 
 # 預設的 System Prompt

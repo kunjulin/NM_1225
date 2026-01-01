@@ -43,6 +43,7 @@ class LLMSettings:
         timeout_seconds: float = 60.0,
         max_tokens: int = 4096,
         temperature: float = 0.1,
+        disable_thinking_mode: bool = False,
     ):
         self.endpoint_url = endpoint_url
         self.model_name = model_name
@@ -53,10 +54,25 @@ class LLMSettings:
         self.timeout_seconds = timeout_seconds
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.disable_thinking_mode = disable_thinking_mode
     
     def is_configured(self) -> bool:
         """檢查是否已設定 LLM"""
         return bool(self.endpoint_url)
+    
+    def get_api_payload_extra_params(self) -> dict:
+        """取得 API 請求的額外參數
+        
+        根據設定返回需要添加的額外參數
+        """
+        extra_params = {}
+        
+        if self.disable_thinking_mode:
+            # 禁用 thinking mode
+            extra_params["thinking_mode"] = False
+            logger.debug(f"為模型 {self.model_name} 禁用 thinking mode（手動設定）")
+        
+        return extra_params
     
     def to_dict(self, include_sensitive: bool = False) -> dict:
         """轉換為字典"""
@@ -69,6 +85,7 @@ class LLMSettings:
             "timeout_seconds": self.timeout_seconds,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
+            "disable_thinking_mode": self.disable_thinking_mode,
         }
         if include_sensitive:
             result["api_key"] = self.api_key
@@ -132,6 +149,7 @@ class LLMService:
             LLMSettingsKeys.TIMEOUT_SECONDS,
             LLMSettingsKeys.MAX_TOKENS,
             LLMSettingsKeys.TEMPERATURE,
+            LLMSettingsKeys.DISABLE_THINKING_MODE,
         ]
         
         result = await self.db.execute(
@@ -160,6 +178,8 @@ class LLMService:
                     settings.max_tokens = int(row.value) if row.value else 4096
                 elif row.key == LLMSettingsKeys.TEMPERATURE:
                     settings.temperature = float(row.value) if row.value else 0.1
+                elif row.key == LLMSettingsKeys.DISABLE_THINKING_MODE:
+                    settings.disable_thinking_mode = row.value.lower() == "true" if row.value else False
             except (ValueError, AttributeError) as e:
                 logger.warning(f"Failed to parse setting {row.key}: {e}")
         
@@ -179,6 +199,7 @@ class LLMService:
             (LLMSettingsKeys.TIMEOUT_SECONDS, str(settings.timeout_seconds), "Request Timeout (seconds)", False),
             (LLMSettingsKeys.MAX_TOKENS, str(settings.max_tokens), "Max Tokens", False),
             (LLMSettingsKeys.TEMPERATURE, str(settings.temperature), "Temperature", False),
+            (LLMSettingsKeys.DISABLE_THINKING_MODE, str(settings.disable_thinking_mode).lower(), "Disable Thinking Mode", False),
         ]
         
         for key, value, description, is_sensitive in settings_map:
@@ -236,6 +257,9 @@ class LLMService:
                 "max_tokens": 10,
                 "temperature": 0,
             }
+            
+            # 添加額外參數（如禁用 thinking mode）
+            payload.update(settings.get_api_payload_extra_params())
             
             async with httpx.AsyncClient(timeout=settings.timeout_seconds) as client:
                 response = await client.post(
@@ -348,6 +372,9 @@ class LLMService:
                 "max_tokens": settings.max_tokens,
                 "temperature": settings.temperature,
             }
+            
+            # 添加額外參數（如禁用 thinking mode）
+            payload.update(settings.get_api_payload_extra_params())
             
             async with httpx.AsyncClient(timeout=settings.timeout_seconds) as client:
                 response = await client.post(
