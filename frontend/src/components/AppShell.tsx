@@ -28,8 +28,10 @@ import {
   Logout as LogoutIcon,
   People as UsersIcon,
   Settings as SettingsIcon,
+  Help as HelpIcon,
 } from '@mui/icons-material'
 import { useAuth, ActingRole } from '../contexts/AuthContext'
+import { HelpPage } from '../pages/HelpPage'
 
 const DRAWER_WIDTH = 240
 
@@ -53,6 +55,7 @@ export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [roleMenuAnchor, setRoleMenuAnchor] = useState<null | HTMLElement>(null)
+  const [helpDialogOpen, setHelpDialogOpen] = useState(false)
   
   // 確保從後端取得最新的模式設定
   const [actualIsDemo, setActualIsDemo] = useState(isDemo)
@@ -216,6 +219,18 @@ export function AppShell() {
             sx={{ mr: 2, cursor: 'pointer' }}
           />
 
+          {/* Help Icon */}
+          <IconButton
+            size="large"
+            edge="end"
+            color="inherit"
+            onClick={() => setHelpDialogOpen(true)}
+            sx={{ mr: 1 }}
+            title="操作說明"
+          >
+            <HelpIcon />
+          </IconButton>
+
           {/* User Menu */}
           <IconButton
             size="large"
@@ -315,6 +330,9 @@ export function AppShell() {
       >
         <Outlet />
       </Box>
+
+      {/* Help Dialog */}
+      <HelpPage open={helpDialogOpen} onClose={() => setHelpDialogOpen(false)} />
     </Box>
   )
 }
