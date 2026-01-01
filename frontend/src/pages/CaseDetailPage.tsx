@@ -1431,108 +1431,110 @@ function ClinicalDataPanel({ snapshot }: ClinicalDataPanelProps) {
     )
   }
   
+  // 計算檢驗結果總數
+  const labResultsCount = labResults ? (
+    labResults.renal.length +
+    labResults.hepatic.length +
+    labResults.thyroid.length +
+    labResults.hematology.length
+  ) : 0
+  
+  // 計算總項目數 (含過敏和檢驗)
+  const totalClinicalCount = encounters.length + conditionList.length + medications.length + procedures.length + allergyList.length + labResultsCount
+  
   return (
     <>
-      {/* 臨床紀錄 (就醫、診斷、用藥、處置) */}
-      {(hasEncounters || hasConditions || hasMedications || hasProcedures) && (
-        <Accordion defaultExpanded sx={{ mb: 2 }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <HospitalIcon color="primary" />
-              <Typography variant="h6">臨床紀錄</Typography>
-              <Chip 
-                label={encounters.length + conditionList.length + medications.length + procedures.length} 
-                size="small" 
-                color="primary" 
-                variant="outlined"
-              />
-            </Stack>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Tabs 
-              value={clinicalTab} 
-              onChange={(_, newValue) => setClinicalTab(newValue)}
-              sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
-            >
-              <Tab 
-                icon={<HospitalIcon fontSize="small" />} 
-                iconPosition="start" 
-                label={`就醫 (${encounters.length})`} 
-                disabled={!hasEncounters}
-              />
-              <Tab 
-                icon={<DiagnosisIcon fontSize="small" />} 
-                iconPosition="start" 
-                label={`診斷 (${conditionList.length})`}
-                disabled={!hasConditions}
-              />
-              <Tab 
-                icon={<MedicationIcon fontSize="small" />} 
-                iconPosition="start" 
-                label={`用藥 (${medications.length})`}
-                disabled={!hasMedications}
-              />
-              <Tab 
-                icon={<ProcedureIcon fontSize="small" />} 
-                iconPosition="start" 
-                label={`處置 (${procedures.length})`}
-                disabled={!hasProcedures}
-              />
-            </Tabs>
-            
-            {/* 就醫紀錄 */}
-            {clinicalTab === 0 && (
-              <EncounterList encounters={encounters} />
-            )}
-            
-            {/* 診斷/病史 */}
-            {clinicalTab === 1 && (
-              <ConditionList conditions={conditionList} />
-            )}
-            
-            {/* 用藥紀錄 */}
-            {clinicalTab === 2 && (
-              <MedicationList medications={medications} />
-            )}
-            
-            {/* 處置紀錄 */}
-            {clinicalTab === 3 && (
-              <ProcedureList procedures={procedures} />
-            )}
-          </AccordionDetails>
-        </Accordion>
-      )}
-      
-      {/* 重要檢驗資料 */}
-      {hasLabResults && (
-        <Accordion defaultExpanded sx={{ mb: 2 }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <LabIcon color="secondary" />
-              <Typography variant="h6">重要檢驗資料</Typography>
-            </Stack>
-          </AccordionSummary>
-          <AccordionDetails>
-            <LabResultsPanel labResults={labResults!} />
-          </AccordionDetails>
-        </Accordion>
-      )}
-      
-      {/* 過敏史 */}
-      {hasAllergies && (
-        <Accordion defaultExpanded sx={{ mb: 2 }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <AllergyIcon color="error" />
-              <Typography variant="h6">過敏史</Typography>
-              <Chip label={allergyList.length} size="small" color="error" variant="outlined" />
-            </Stack>
-          </AccordionSummary>
-          <AccordionDetails>
+      {/* 臨床紀錄 (就醫、診斷、用藥、處置、過敏、檢驗) */}
+      <Accordion defaultExpanded sx={{ mb: 2 }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <HospitalIcon color="primary" />
+            <Typography variant="h6">臨床紀錄</Typography>
+            <Chip 
+              label={totalClinicalCount} 
+              size="small" 
+              color="primary" 
+              variant="outlined"
+            />
+          </Stack>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Tabs 
+            value={clinicalTab} 
+            onChange={(_, newValue) => setClinicalTab(newValue)}
+            sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
+            variant="scrollable"
+            scrollButtons="auto"
+          >
+            <Tab 
+              icon={<HospitalIcon fontSize="small" />} 
+              iconPosition="start" 
+              label={`就醫 (${encounters.length})`} 
+              disabled={!hasEncounters}
+            />
+            <Tab 
+              icon={<DiagnosisIcon fontSize="small" />} 
+              iconPosition="start" 
+              label={`診斷 (${conditionList.length})`}
+              disabled={!hasConditions}
+            />
+            <Tab 
+              icon={<MedicationIcon fontSize="small" />} 
+              iconPosition="start" 
+              label={`用藥 (${medications.length})`}
+              disabled={!hasMedications}
+            />
+            <Tab 
+              icon={<ProcedureIcon fontSize="small" />} 
+              iconPosition="start" 
+              label={`處置 (${procedures.length})`}
+              disabled={!hasProcedures}
+            />
+            <Tab 
+              icon={<AllergyIcon fontSize="small" />} 
+              iconPosition="start" 
+              label={`過敏 (${allergyList.length})`}
+              disabled={!hasAllergies}
+            />
+            <Tab 
+              icon={<LabIcon fontSize="small" />} 
+              iconPosition="start" 
+              label={`檢驗 (${labResultsCount})`}
+              disabled={!hasLabResults}
+            />
+          </Tabs>
+          
+          {/* 就醫紀錄 */}
+          {clinicalTab === 0 && (
+            <EncounterList encounters={encounters} />
+          )}
+          
+          {/* 診斷/病史 */}
+          {clinicalTab === 1 && (
+            <ConditionList conditions={conditionList} />
+          )}
+          
+          {/* 用藥紀錄 */}
+          {clinicalTab === 2 && (
+            <MedicationList medications={medications} />
+          )}
+          
+          {/* 處置紀錄 */}
+          {clinicalTab === 3 && (
+            <ProcedureList procedures={procedures} />
+          )}
+          
+          {/* 過敏 */}
+          {clinicalTab === 4 && (
             <AllergyList allergies={allergyList} />
-          </AccordionDetails>
-        </Accordion>
-      )}
+          )}
+          
+          {/* 檢驗 */}
+          {clinicalTab === 5 && labResults && (
+            <LabResultsPanel labResults={labResults} />
+          )}
+        </AccordionDetails>
+      </Accordion>
       
     </>
   )
