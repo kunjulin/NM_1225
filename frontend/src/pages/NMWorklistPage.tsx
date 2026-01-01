@@ -28,6 +28,7 @@ import {
   DialogContent,
   DialogActions,
   Checkbox,
+  TextField,
 } from '@mui/material'
 import {
   Refresh as RefreshIcon,
@@ -71,6 +72,14 @@ export function NMWorklistPage() {
   const [bulkSubmitDialogOpen, setBulkSubmitDialogOpen] = useState(false)
   const [bulkSubmitResult, setBulkSubmitResult] = useState<BulkSubmitResponse | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [filterDate, setFilterDate] = useState<string>('') // 期望執行日期篩選
+
+  // 處理日期篩選變更
+  const handleFilterDateChange = (date: string) => {
+    setFilterDate(date)
+    // 清除選取，因為篩選後可能影響可選項目
+    setSelectedIds(new Set())
+  }
 
   const { data, isLoading, error, refetch } = useQuery<WorklistResponse>({
     queryKey: ['nm-worklist'],
@@ -213,6 +222,38 @@ export function NMWorklistPage() {
     })
   }
 
+  // 篩選函數：根據選擇的日期篩選項目
+  const filterItemsByDate = (items: WorklistItem[]): WorklistItem[] => {
+    if (!filterDate) {
+      return items // 沒有選擇日期時顯示全部
+    }
+    
+    const selectedDate = new Date(filterDate)
+    selectedDate.setHours(0, 0, 0, 0) // 設定為當天的開始時間
+    
+    return items.filter((item) => {
+      if (!item.snapshotSummary.occurrenceDateTime) {
+        return false // 沒有執行日期的項目不顯示
+      }
+      
+      const itemDate = new Date(item.snapshotSummary.occurrenceDateTime)
+      itemDate.setHours(0, 0, 0, 0) // 設定為當天的開始時間
+      
+      return itemDate.getTime() === selectedDate.getTime()
+    })
+  }
+
+  // 過濾後的群組資料
+  const getFilteredGroups = () => {
+    if (!data) return []
+    
+    return data.groups.map((group) => ({
+      ...group,
+      items: filterItemsByDate(group.items),
+      count: filterDate ? filterItemsByDate(group.items).length : group.count,
+    })).filter((group) => group.items.length > 0 || !filterDate) // 如果有篩選日期，只顯示有項目的群組
+  }
+
   if (isLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
@@ -229,7 +270,7 @@ export function NMWorklistPage() {
     )
   }
 
-  const groups = data?.groups || []
+  const groups = getFilteredGroups()
 
   // 如果沒有群組，顯示空狀態
   if (groups.length === 0) {
@@ -243,10 +284,22 @@ export function NMWorklistPage() {
             {syncStatus && (
               <Typography variant="caption" color="text.secondary">
                 上次同步: {syncStatus.lastSyncTime ? new Date(syncStatus.lastSyncTime).toLocaleString('zh-TW') : '尚未同步'}
+                {syncStatus.nextSyncIn && ` | 下次同步: ${syncStatus.nextSyncIn}秒後`}
               </Typography>
             )}
           </Box>
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TextField
+              type="date"
+              label="期望執行日期"
+              size="small"
+              value={filterDate}
+              onChange={(e) => handleFilterDateChange(e.target.value)}
+              InputLabelProps={{
+                shrink: true,
+              }}
+              sx={{ width: 180 }}
+            />
             <Tooltip title="從 FHIR Server 同步 ServiceRequest">
               <Button
                 variant="outlined"
@@ -269,10 +322,16 @@ export function NMWorklistPage() {
           <CardContent>
             <Box p={4} textAlign="center">
               <Typography variant="h6" color="text.secondary" gutterBottom>
-                目前沒有待處理的案件
+                {filterDate 
+                  ? `沒有 ${new Date(filterDate).toLocaleDateString('zh-TW')} 的待處理案件`
+                  : '目前沒有待處理的案件'
+                }
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                請點擊「同步 FHIR」從 FHIR Server 拉取 ServiceRequest，或使用測試資料功能建立示範資料
+                {filterDate 
+                  ? '請選擇其他日期或清除篩選條件查看全部案件'
+                  : '請點擊「同步 FHIR」從 FHIR Server 拉取 ServiceRequest，或使用測試資料功能建立示範資料'
+                }
               </Typography>
             </Box>
           </CardContent>
@@ -306,7 +365,18 @@ export function NMWorklistPage() {
             </Typography>
           )}
         </Box>
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <TextField
+            type="date"
+            label="期望執行日期"
+            size="small"
+            value={filterDate}
+            onChange={(e) => setFilterDate(e.target.value)}
+            InputLabelProps={{
+              shrink: true,
+            }}
+            sx={{ width: 180 }}
+          />
           <Tooltip title="從 FHIR Server 同步 ServiceRequest">
             <Button
               variant="outlined"
