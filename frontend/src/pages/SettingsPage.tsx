@@ -396,7 +396,7 @@ export function SettingsPage() {
               label={
                 <Box>
                   <Typography variant="body1">
-                    禁用 Thinking Mode
+                    停用 Thinking Mode
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     對於支援 thinking mode 的模型（如 Qwen 系列），啟用此選項將禁用 thinking mode 以獲得直接輸出和更好的性能

@@ -216,7 +216,19 @@ export function AppShell() {
             size="small"
             onClick={handleRoleMenuOpen}
             icon={<SwitchIcon />}
-            sx={{ mr: 2, cursor: 'pointer' }}
+            sx={{ 
+              mr: 2, 
+              cursor: 'pointer',
+              ...(actingRole === 'ADMIN' && {
+                color: 'white',
+                '& .MuiChip-label': {
+                  color: 'white',
+                },
+                '& .MuiChip-icon': {
+                  color: 'white',
+                },
+              }),
+            }}
           />
 
           {/* Help Icon */}
