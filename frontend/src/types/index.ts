@@ -580,6 +580,11 @@ export interface LLMDefaultPrompts {
   user_prompt_template: string
 }
 
+export interface LLMErrorLogsResponse {
+  errors: LLMAnalysisResponse[]
+  total: number
+}
+
 // === LLM Analysis ===
 
 export type ExamDecisionStatus = 'APPROPRIATE' | 'POTENTIALLY_APPROPRIATE' | 'NOT_APPROPRIATE' | 'INSUFFICIENT_DATA'

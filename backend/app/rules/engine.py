@@ -149,7 +149,13 @@ class RuleEngine:
         snapshot = json.loads(case.snapshot_json or "{}")
         
         # === 取得體重 ===
-        weight = local_facts.get("weightKg", {}).get("value")
+        # 優先從 local_facts 取得（手動輸入或自動填入）
+        weight = None
+        weight_in_local_facts = local_facts.get("weightKg")
+        if isinstance(weight_in_local_facts, dict):
+            weight = weight_in_local_facts.get("value")
+        
+        # 如果 local_facts 中沒有體重或值為空，從 snapshot 取得
         if not weight:
             weight = snapshot.get("weightKg")
         

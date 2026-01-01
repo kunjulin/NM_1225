@@ -1516,7 +1516,33 @@ function AIAnalysisPanel({ caseId }: AIAnalysisPanelProps) {
         
         {hasFailed && (
           <Alert severity="error" sx={{ mb: 2 }}>
-            分析失敗：{analysis?.errorMessage || '未知錯誤'}
+            <Typography variant="body2" fontWeight={600} gutterBottom>
+              分析失敗：{analysis?.errorMessage || '未知錯誤'}
+            </Typography>
+            {analysis?.errorMessage?.includes('連線超時') && (
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="caption" component="div" sx={{ mb: 1 }}>
+                  <strong>解決方法：</strong>
+                </Typography>
+                <Typography variant="caption" component="div" sx={{ mb: 0.5 }}>
+                  1. 前往「系統設定」頁面，增加「請求超時（秒）」設定值（建議 120-180 秒）
+                </Typography>
+                <Typography variant="caption" component="div" sx={{ mb: 0.5 }}>
+                  2. 檢查 LLM API 服務是否正常運作
+                </Typography>
+                <Typography variant="caption" component="div" sx={{ mb: 0.5 }}>
+                  3. 檢查網路連線是否穩定
+                </Typography>
+                <Typography variant="caption" component="div" sx={{ mt: 1, fontStyle: 'italic' }}>
+                  詳細資訊請查看後端日誌或使用除錯腳本：<code>python debug_llm_analysis.py &lt;case_id&gt;</code>
+                </Typography>
+              </Box>
+            )}
+            {analysis?.errorMessage && !analysis?.errorMessage?.includes('連線超時') && (
+              <Typography variant="caption" component="div" sx={{ mt: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                詳細資訊請查看後端日誌或資料庫中的 llm_analyses 表
+              </Typography>
+            )}
           </Alert>
         )}
         

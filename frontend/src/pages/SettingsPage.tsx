@@ -34,10 +34,22 @@ import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   SmartToy as AIIcon,
+  Error as ErrorIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material'
+import Accordion from '@mui/material/Accordion'
+import AccordionSummary from '@mui/material/AccordionSummary'
+import AccordionDetails from '@mui/material/AccordionDetails'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
 import { apiClient } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
-import type { LLMSettings, LLMSettingsUpdate, LLMTestConnectionResponse, LLMDefaultPrompts } from '../types'
+import { useNavigate } from 'react-router-dom'
+import type { LLMSettings, LLMSettingsUpdate, LLMTestConnectionResponse, LLMDefaultPrompts, LLMErrorLogsResponse } from '../types'
 
 export function SettingsPage() {
   const queryClient = useQueryClient()
@@ -59,6 +71,9 @@ export function SettingsPage() {
   const [showApiKey, setShowApiKey] = useState(false)
   const [showSystemPrompt, setShowSystemPrompt] = useState(false)
   const [showUserPrompt, setShowUserPrompt] = useState(false)
+  const [showErrorLogs, setShowErrorLogs] = useState(false)
+  const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null)
+  const navigate = useNavigate()
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
     open: false,
     message: '',
@@ -81,6 +96,16 @@ export function SettingsPage() {
       apiClient.setAuthHeaders(getAuthHeaders())
       return apiClient.get<LLMDefaultPrompts>('/settings/llm/defaults')
     },
+  })
+  
+  // Fetch error logs
+  const { data: errorLogs, isLoading: isLoadingErrorLogs, refetch: refetchErrorLogs } = useQuery<LLMErrorLogsResponse>({
+    queryKey: ['llm-error-logs'],
+    queryFn: async () => {
+      apiClient.setAuthHeaders(getAuthHeaders())
+      return apiClient.get<LLMErrorLogsResponse>('/settings/llm/error-logs?limit=50')
+    },
+    enabled: showErrorLogs, // 只在展開時載入
   })
   
   // Initialize form with current settings
@@ -476,6 +501,199 @@ export function SettingsPage() {
               </ul>
             </Alert>
           </Stack>
+        </CardContent>
+      </Card>
+      
+      {/* Error Logs Card */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Accordion expanded={showErrorLogs} onChange={() => setShowErrorLogs(!showErrorLogs)}>
+            <AccordionSummary expandIcon={showErrorLogs ? <ExpandLessIcon /> : <ExpandMoreIcon />}>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ width: '100%' }}>
+                <ErrorIcon color="error" />
+                <Typography variant="h6">LLM 錯誤日誌</Typography>
+                {errorLogs && errorLogs.total > 0 && (
+                  <Chip 
+                    label={`${errorLogs.total} 筆錯誤`} 
+                    color="error" 
+                    size="small" 
+                  />
+                )}
+              </Stack>
+            </AccordionSummary>
+            <AccordionDetails>
+              {isLoadingErrorLogs ? (
+                <Box display="flex" justifyContent="center" py={4}>
+                  <CircularProgress />
+                </Box>
+              ) : errorLogs && errorLogs.errors.length > 0 ? (
+                <Stack spacing={2}>
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Typography variant="body2" color="text.secondary">
+                      顯示最近 {errorLogs.total} 筆失敗的分析記錄
+                    </Typography>
+                    <Button
+                      size="small"
+                      startIcon={<RefreshIcon />}
+                      onClick={() => refetchErrorLogs()}
+                    >
+                      重新整理
+                    </Button>
+                  </Box>
+                  
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>時間</TableCell>
+                          <TableCell>案件 ID</TableCell>
+                          <TableCell>模型</TableCell>
+                          <TableCell>錯誤訊息</TableCell>
+                          <TableCell>執行時間</TableCell>
+                          <TableCell>操作</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {errorLogs.errors.map((error) => (
+                          <TableRow key={error.id}>
+                            <TableCell>
+                              {error.createdAt ? new Date(error.createdAt).toLocaleString('zh-TW') : 'N/A'}
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" fontFamily="monospace" fontSize="0.75rem">
+                                {error.caseId?.slice(0, 8) || 'N/A'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" fontSize="0.75rem">
+                                {(error.result as Record<string, unknown>)?.model_name as string || 'N/A'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography 
+                                variant="body2" 
+                                sx={{ 
+                                  maxWidth: 400,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap'
+                                }}
+                                title={error.errorMessage || ''}
+                              >
+                                {error.errorMessage?.split('\n')[0] || '未知錯誤'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              {error.latencyMs ? `${error.latencyMs} ms` : 'N/A'}
+                            </TableCell>
+                            <TableCell>
+                              <Stack direction="row" spacing={1}>
+                                <Tooltip title="查看詳細資訊">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => setExpandedErrorId(
+                                      expandedErrorId === error.id ? null : error.id
+                                    )}
+                                  >
+                                    {expandedErrorId === error.id ? 
+                                      <ExpandLessIcon fontSize="small" /> : 
+                                      <ExpandMoreIcon fontSize="small" />
+                                    }
+                                  </IconButton>
+                                </Tooltip>
+                                {error.caseId && (
+                                  <Tooltip title="前往案件詳情">
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => navigate(`/cases/${error.caseId}`)}
+                                    >
+                                      <LinkIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                )}
+                              </Stack>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  
+                  {/* 展開的錯誤詳情 */}
+                  {errorLogs.errors.map((error) => (
+                    expandedErrorId === error.id && (
+                      <Paper key={error.id} variant="outlined" sx={{ p: 2, bgcolor: 'error.light' }}>
+                        <Stack spacing={2}>
+                          <Box>
+                            <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                              錯誤訊息
+                            </Typography>
+                            <Typography 
+                              variant="body2" 
+                              component="pre" 
+                              sx={{ 
+                                whiteSpace: 'pre-wrap', 
+                                wordBreak: 'break-word',
+                                fontFamily: 'monospace',
+                                fontSize: '0.75rem',
+                                bgcolor: 'background.paper',
+                                p: 1,
+                                borderRadius: 1,
+                                maxHeight: 300,
+                                overflow: 'auto'
+                              }}
+                            >
+                              {error.errorMessage || '無錯誤訊息'}
+                            </Typography>
+                          </Box>
+                          
+                          <Box>
+                            <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                              分析資訊
+                            </Typography>
+                            <Stack spacing={0.5}>
+                              <Typography variant="body2">
+                                <strong>分析 ID:</strong> {error.id}
+                              </Typography>
+                              <Typography variant="body2">
+                                <strong>案件 ID:</strong> {error.caseId || 'N/A'}
+                              </Typography>
+                              <Typography variant="body2">
+                                <strong>狀態:</strong> {error.status}
+                              </Typography>
+                              <Typography variant="body2">
+                                <strong>建立時間:</strong> {error.createdAt ? new Date(error.createdAt).toLocaleString('zh-TW') : 'N/A'}
+                              </Typography>
+                              {error.latencyMs && (
+                                <Typography variant="body2">
+                                  <strong>執行時間:</strong> {error.latencyMs} ms
+                                </Typography>
+                              )}
+                            </Stack>
+                          </Box>
+                          
+                          {error.caseId && (
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              startIcon={<LinkIcon />}
+                              onClick={() => navigate(`/cases/${error.caseId}`)}
+                            >
+                              前往案件詳情
+                            </Button>
+                          )}
+                        </Stack>
+                      </Paper>
+                    )
+                  ))}
+                </Stack>
+              ) : (
+                <Alert severity="info">
+                  目前沒有錯誤記錄
+                </Alert>
+              )}
+            </AccordionDetails>
+          </Accordion>
         </CardContent>
       </Card>
       

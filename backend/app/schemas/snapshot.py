@@ -185,6 +185,13 @@ class SnapshotData(BaseModel):
     occurrenceDateTime: Optional[str] = None  # 期望執行時間
     requesterDisplay: Optional[str] = None    # 開單醫師名稱
     reasonCodeDisplay: Optional[str] = None   # 適應症說明
+    
+    # 病人基本資料
+    weightKg: Optional[float] = None  # 體重 (kg)
+    examCode: Optional[str] = None    # 檢查代碼
+    examDisplay: Optional[str] = None # 檢查名稱
+    patientId: Optional[str] = None   # 病人 ID
+    patientName: Optional[str] = None  # 病人姓名
 
 
 class DoseValue(BaseModel):

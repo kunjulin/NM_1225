@@ -425,10 +425,11 @@ class LLMService:
                 created_at=now,
             )
             
-        except Exception as e:
-            logger.error(f"LLM analysis failed for case {case_id}: {e}")
+        except httpx.TimeoutException as e:
+            error_msg = f"連線超時（{settings.timeout_seconds}秒）"
+            logger.error(f"LLM analysis timeout for case {case_id}: {error_msg}")
             analysis.status = AnalysisStatus.FAILED
-            analysis.error_message = str(e)
+            analysis.error_message = error_msg
             analysis.updated_at = datetime.now(timezone.utc).isoformat()
             await self.db.commit()
             
@@ -436,7 +437,59 @@ class LLMService:
                 id=analysis_id,
                 case_id=case_id,
                 status=AnalysisStatus.FAILED,
-                error_message=str(e),
+                error_message=error_msg,
+                created_at=now,
+            )
+        except httpx.RequestError as e:
+            error_msg = f"網路連線錯誤: {str(e)}"
+            logger.error(f"LLM analysis network error for case {case_id}: {error_msg}", exc_info=True)
+            analysis.status = AnalysisStatus.FAILED
+            analysis.error_message = error_msg
+            analysis.updated_at = datetime.now(timezone.utc).isoformat()
+            await self.db.commit()
+            
+            return LLMAnalysisResult(
+                id=analysis_id,
+                case_id=case_id,
+                status=AnalysisStatus.FAILED,
+                error_message=error_msg,
+                created_at=now,
+            )
+        except json.JSONDecodeError as e:
+            error_msg = f"JSON 解析錯誤: {str(e)}"
+            logger.error(f"LLM analysis JSON decode error for case {case_id}: {error_msg}", exc_info=True)
+            analysis.status = AnalysisStatus.FAILED
+            analysis.error_message = error_msg
+            analysis.updated_at = datetime.now(timezone.utc).isoformat()
+            await self.db.commit()
+            
+            return LLMAnalysisResult(
+                id=analysis_id,
+                case_id=case_id,
+                status=AnalysisStatus.FAILED,
+                error_message=error_msg,
+                created_at=now,
+            )
+        except Exception as e:
+            import traceback
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"LLM analysis failed for case {case_id}: {error_msg}\n{traceback.format_exc()}",
+                exc_info=True
+            )
+            analysis.status = AnalysisStatus.FAILED
+            # 儲存詳細錯誤訊息（包含 traceback，但限制長度）
+            full_error = f"{error_msg}\n\n詳細資訊:\n{error_traceback[:1000]}"  # 限制長度避免資料庫欄位過長
+            analysis.error_message = full_error
+            analysis.updated_at = datetime.now(timezone.utc).isoformat()
+            await self.db.commit()
+            
+            return LLMAnalysisResult(
+                id=analysis_id,
+                case_id=case_id,
+                status=AnalysisStatus.FAILED,
+                error_message=error_msg,  # 前端只顯示簡短訊息
                 created_at=now,
             )
     
@@ -516,6 +569,53 @@ class LLMService:
         
         return results
     
+    async def get_failed_analyses(
+        self, 
+        limit: int = 50,
+        case_id: Optional[str] = None
+    ) -> list[LLMAnalysisResult]:
+        """取得失敗的分析記錄
+        
+        Args:
+            limit: 最大筆數
+            case_id: 可選的案件 ID 過濾
+            
+        Returns:
+            list[LLMAnalysisResult]: 失敗的分析記錄列表
+        """
+        query = select(LLMAnalysis).where(
+            LLMAnalysis.status == AnalysisStatus.FAILED
+        )
+        
+        if case_id:
+            query = query.where(LLMAnalysis.case_id == case_id)
+        
+        query = query.order_by(desc(LLMAnalysis.created_at)).limit(limit)
+        
+        result = await self.db.execute(query)
+        analyses = result.scalars().all()
+        
+        results = []
+        for analysis in analyses:
+            result_json = None
+            if analysis.result_json:
+                try:
+                    result_json = json.loads(analysis.result_json)
+                except json.JSONDecodeError:
+                    pass
+            
+            results.append(LLMAnalysisResult(
+                id=analysis.id,
+                case_id=analysis.case_id,
+                status=analysis.status,
+                result=result_json,
+                error_message=analysis.error_message,
+                latency_ms=analysis.latency_ms,
+                created_at=analysis.created_at,
+            ))
+        
+        return results
+    
     def _build_input_payload(self, snapshot: PatientSnapshotResponse) -> dict:
         """組合 LLM 輸入 payload
         
@@ -539,6 +639,7 @@ class LLMService:
         # 組合病人快照（移除敏感資訊）
         patient_snapshot = {
             "patientRef": snapshot.patientRef,
+            "weightKg": snapshot.snapshot.weightKg,  # 體重資訊
             "encounters": [e.model_dump() for e in snapshot.snapshot.encounters] if snapshot.snapshot.encounters else [],
             "conditionList": [c.model_dump() for c in snapshot.snapshot.conditionList] if snapshot.snapshot.conditionList else [],
             "medications": [m.model_dump() for m in snapshot.snapshot.medications] if snapshot.snapshot.medications else [],

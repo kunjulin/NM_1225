@@ -2,7 +2,7 @@
 Settings API
 系統設定相關 API（包含 LLM 設定）
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -212,3 +212,46 @@ async def clear_api_key(
     
     return {"success": True, "message": "API Key 已清除"}
 
+
+@router.get("/llm/error-logs")
+async def get_llm_error_logs(
+    limit: int = Query(50, description="最大筆數"),
+    case_id: Optional[str] = Query(None, description="案件 ID 過濾（可選）"),
+    current_user: CurrentUser = Depends(get_current_user),
+    db = Depends(get_db),
+):
+    """取得 LLM 分析錯誤記錄
+    
+    僅管理員可存取
+    
+    Args:
+        limit: 最大筆數（預設 50）
+        case_id: 可選的案件 ID 過濾
+    """
+    # 檢查權限：僅 ADMIN 可存取
+    if current_user.acting_role.value != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只有管理員可以存取錯誤記錄"
+        )
+    
+    from app.api.cases import LLMAnalysisResponse
+    
+    llm_service = LLMService(db)
+    results = await llm_service.get_failed_analyses(limit=limit, case_id=case_id)
+    
+    return {
+        "errors": [
+            LLMAnalysisResponse(
+                id=r.id,
+                caseId=r.case_id,
+                status=r.status,
+                result=r.result,
+                errorMessage=r.error_message,
+                latencyMs=r.latency_ms,
+                createdAt=r.created_at,
+            ).model_dump()
+            for r in results
+        ],
+        "total": len(results),
+    }

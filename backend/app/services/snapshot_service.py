@@ -541,8 +541,13 @@ class SnapshotService:
                             }
                             local_facts_updated = True
             
-            # 從 snapshot 中提取體重（如果 local_facts 中還沒有）
-            if "weightKg" not in local_facts:
+            # 從 snapshot 中提取體重（如果 local_facts 中還沒有或值為空）
+            weight_in_local_facts = local_facts.get("weightKg")
+            weight_value = None
+            if isinstance(weight_in_local_facts, dict):
+                weight_value = weight_in_local_facts.get("value")
+            
+            if not weight_value:  # 如果 local_facts 中沒有體重或值為空
                 weight_kg = snapshot_data.get("weightKg")
                 if weight_kg is not None:
                     # 從 observations 中找到體重 observation 以取得更多資訊
@@ -619,6 +624,12 @@ class SnapshotService:
             occurrenceDateTime=snapshot_data.get("occurrenceDateTime"),
             requesterDisplay=snapshot_data.get("requesterDisplay"),
             reasonCodeDisplay=snapshot_data.get("reasonCodeDisplay"),
+            # 病人基本資料
+            weightKg=snapshot_data.get("weightKg"),
+            examCode=snapshot_data.get("examCode"),
+            examDisplay=snapshot_data.get("examDisplay"),
+            patientId=snapshot_data.get("patientId"),
+            patientName=snapshot_data.get("patientName"),
         )
     
     def _parse_encounters(self, encounters: list[dict]) -> list[dict]:
