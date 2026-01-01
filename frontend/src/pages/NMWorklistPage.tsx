@@ -165,16 +165,9 @@ export function NMWorklistPage() {
     navigate(`/case/${caseId}`)
   }
 
-  // 取得「已建立草案」群組中可送審的案件 (非 FAIL)
-  const getDraftedGroup = () => {
-    return data?.groups.find(g => g.groupKey === 'NM_DRAFTED')
-  }
-
-  const getSubmittableCaseIds = (): string[] => {
-    const draftedGroup = getDraftedGroup()
-    if (!draftedGroup) return []
+  const getSubmittableCaseIds = (items: WorklistItem[]): string[] => {
     // 僅送審 CDS 非 FAIL 的案件
-    return draftedGroup.items
+    return items
       .filter(item => item.ruleEval.overallSeverity !== 'FAIL')
       .map(item => item.caseId)
   }
@@ -413,73 +406,77 @@ export function NMWorklistPage() {
         ))}
       </Tabs>
 
-      {groups.map((group, index) => (
-        <Box
-          key={group.groupKey}
-          role="tabpanel"
-          hidden={tabValue !== index}
-        >
-          {tabValue === index && (
-            <Card>
-              {/* 已建立草案 Tab 顯示批次送審按鈕 */}
-              {group.groupKey === 'NM_DRAFTED' && (
-                <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center">
-                    <Typography variant="body2" color="text.secondary">
-                      可送審案件: {getSubmittableCaseIds().length} / {group.items.length}
-                      {group.items.length - getSubmittableCaseIds().length > 0 && (
-                        <Chip 
-                          label={`${group.items.length - getSubmittableCaseIds().length} 件 CDS FAIL 需個別處理`}
-                          size="small"
-                          color="error"
-                          variant="outlined"
-                          sx={{ ml: 1 }}
-                        />
-                      )}
-                    </Typography>
-                    <Stack direction="row" spacing={2} alignItems="center">
-                      {selectedIds.size > 0 && (
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          startIcon={<SendIcon />}
-                          onClick={handleBulkSubmit}
-                          disabled={bulkSubmitMutation.isPending}
-                        >
-                          {bulkSubmitMutation.isPending ? '送審中...' : `批次送審 (${selectedIds.size})`}
-                        </Button>
-                      )}
+      {groups.map((group, index) => {
+        const submittableIds = getSubmittableCaseIds(group.items)
+        const submittableCount = submittableIds.length
+
+        return (
+          <Box
+            key={group.groupKey}
+            role="tabpanel"
+            hidden={tabValue !== index}
+          >
+            {tabValue === index && (
+              <Card>
+                {/* 已建立草案 Tab 顯示批次送審按鈕 */}
+                {group.groupKey === 'NM_DRAFTED' && (
+                  <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography variant="body2" color="text.secondary">
+                        可送審案件: {submittableCount} / {group.items.length}
+                        {group.items.length - submittableCount > 0 && (
+                          <Chip 
+                            label={`${group.items.length - submittableCount} 件 CDS FAIL 需個別處理`}
+                            size="small"
+                            color="error"
+                            variant="outlined"
+                            sx={{ ml: 1 }}
+                          />
+                        )}
+                      </Typography>
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        {selectedIds.size > 0 && (
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            startIcon={<SendIcon />}
+                            onClick={handleBulkSubmit}
+                            disabled={bulkSubmitMutation.isPending}
+                          >
+                            {bulkSubmitMutation.isPending ? '送審中...' : `批次送審 (${selectedIds.size})`}
+                          </Button>
+                        )}
+                      </Stack>
                     </Stack>
-                  </Stack>
-                </Box>
-              )}
-              <CardContent sx={{ p: 0 }}>
-                {group.items.length === 0 ? (
-                  <Box p={4} textAlign="center">
-                    <Typography color="text.secondary">
-                      目前沒有 {group.title} 的案件
-                    </Typography>
                   </Box>
-                ) : (
-                  <TableContainer>
-                    <Table>
-                      <TableHead>
-                        <TableRow>
-                          {group.groupKey === 'NM_DRAFTED' && (
-                            <TableCell padding="checkbox">
-                              <Checkbox
-                                checked={
-                                  selectedIds.size === getSubmittableCaseIds().length && 
-                                  getSubmittableCaseIds().length > 0
-                                }
-                                indeterminate={
-                                  selectedIds.size > 0 && 
-                                  selectedIds.size < getSubmittableCaseIds().length
-                                }
-                                onChange={() => handleSelectAll(group.items)}
-                              />
-                            </TableCell>
-                          )}
+                )}
+                <CardContent sx={{ p: 0 }}>
+                  {group.items.length === 0 ? (
+                    <Box p={4} textAlign="center">
+                      <Typography color="text.secondary">
+                        目前沒有 {group.title} 的案件
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <TableContainer>
+                      <Table>
+                        <TableHead>
+                          <TableRow>
+                            {group.groupKey === 'NM_DRAFTED' && (
+                              <TableCell padding="checkbox">
+                                <Checkbox
+                                  checked={
+                                    selectedIds.size === submittableCount && 
+                                    submittableCount > 0
+                                  }
+                                  indeterminate={
+                                    selectedIds.size > 0 && 
+                                    selectedIds.size < submittableCount
+                                  }
+                                  onChange={() => handleSelectAll(group.items)}
+                                />
+                              </TableCell>
+                            )}
                           <TableCell>病人</TableCell>
                           <TableCell>檢查</TableCell>
                           <TableCell>期望執行時間</TableCell>
@@ -590,7 +587,7 @@ export function NMWorklistPage() {
             </Card>
           )}
         </Box>
-      ))}
+      )})}
 
       {/* 批次送審結果對話框 */}
       <Dialog 
