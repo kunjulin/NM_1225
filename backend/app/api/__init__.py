@@ -8,6 +8,7 @@ from app.api.analytics import router as analytics_router
 from app.api.demo import router as demo_router
 from app.api.auth import router as auth_router
 from app.api.admin import router as admin_router
+from app.api.settings import router as settings_router
 
 __all__ = [
     "nm_router",
@@ -17,6 +18,7 @@ __all__ = [
     "demo_router",
     "auth_router",
     "admin_router",
+    "settings_router",
 ]
 
 

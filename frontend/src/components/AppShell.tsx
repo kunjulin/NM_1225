@@ -27,6 +27,7 @@ import {
   SwapHoriz as SwitchIcon,
   Logout as LogoutIcon,
   People as UsersIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material'
 import { useAuth, ActingRole } from '../contexts/AuthContext'
 
@@ -128,6 +129,12 @@ export function AppShell() {
       text: '使用者管理',
       icon: <UsersIcon />,
       path: '/admin/users',
+      roles: ['ADMIN'] as ActingRole[],
+    },
+    {
+      text: '系統設定',
+      icon: <SettingsIcon />,
+      path: '/settings',
       roles: ['ADMIN'] as ActingRole[],
     },
   ]

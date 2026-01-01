@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import init_db
-from app.api import nm_router, pharmacy_router, cases_router, analytics_router, demo_router, auth_router, admin_router
+from app.api import nm_router, pharmacy_router, cases_router, analytics_router, demo_router, auth_router, admin_router, settings_router
 from app.api.test_data import router as test_data_router
 from app.services.outbox_worker import (
     start_outbox_worker, stop_outbox_worker, 
@@ -77,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(analytics_router, prefix="/api/analytics", tags=["Analytics"])
     app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
     app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
+    app.include_router(settings_router, prefix="/api/settings", tags=["Settings"])
     app.include_router(test_data_router, prefix="/api/test-data", tags=["Test Data"])
     
     # Demo Mode 專用路由

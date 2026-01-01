@@ -2,7 +2,9 @@
 Cases API 路由
 病人快照與 Auto-fill 功能
 """
+from typing import Optional
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -17,8 +19,28 @@ from app.schemas import (
 )
 from app.services.snapshot_service import SnapshotService
 from app.services.auth_service import get_current_user, CurrentUser
+from app.services.llm_service import LLMService
+from app.models import TriggerType
 
 router = APIRouter()
+
+
+# === LLM Analysis Schemas ===
+
+class LLMAnalysisResponse(BaseModel):
+    """LLM 分析回應"""
+    id: str
+    caseId: str
+    status: str
+    result: Optional[dict] = None
+    errorMessage: Optional[str] = None
+    latencyMs: Optional[int] = None
+    createdAt: Optional[str] = None
+
+
+class LLMAnalysisTriggerRequest(BaseModel):
+    """觸發 LLM 分析請求"""
+    trigger_type: str = "MANUAL"  # MANUAL or AUTO
 
 
 @router.get("/{case_id}/snapshot", response_model=PatientSnapshotResponse)
@@ -104,4 +126,119 @@ async def refresh_clinical_data(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"重新整理臨床資料失敗: {str(e)}"
         )
+
+
+# === LLM Analysis Endpoints ===
+
+@router.post("/{case_id}/llm-analysis", response_model=LLMAnalysisResponse)
+async def trigger_llm_analysis(
+    case_id: str,
+    request: LLMAnalysisTriggerRequest = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """觸發 LLM 臨床分析
+    
+    基於 FHIR snapshot 和 CDS flags，使用 LLM 產生：
+    - 病例摘要
+    - 適應症評估
+    - CDSS 整合建議
+    """
+    trigger_type = TriggerType.MANUAL
+    if request and request.trigger_type == "AUTO":
+        trigger_type = TriggerType.AUTO
+    
+    llm_service = LLMService(db)
+    result = await llm_service.analyze_case(
+        case_id=case_id,
+        triggered_by=current_user.subject,
+        trigger_type=trigger_type,
+    )
+    
+    return LLMAnalysisResponse(
+        id=result.id,
+        caseId=result.case_id,
+        status=result.status,
+        result=result.result,
+        errorMessage=result.error_message,
+        latencyMs=result.latency_ms,
+        createdAt=result.created_at,
+    )
+
+
+@router.get("/{case_id}/llm-analysis", response_model=Optional[LLMAnalysisResponse])
+async def get_latest_llm_analysis(
+    case_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """取得最近的 LLM 分析結果
+    
+    如果沒有分析結果，回傳 null
+    """
+    llm_service = LLMService(db)
+    result = await llm_service.get_latest_analysis(case_id)
+    
+    if not result:
+        return None
+    
+    return LLMAnalysisResponse(
+        id=result.id,
+        caseId=result.case_id,
+        status=result.status,
+        result=result.result,
+        errorMessage=result.error_message,
+        latencyMs=result.latency_ms,
+        createdAt=result.created_at,
+    )
+
+
+@router.get("/{case_id}/llm-analysis/history")
+async def get_llm_analysis_history(
+    case_id: str,
+    limit: int = Query(10, description="最大筆數"),
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """取得 LLM 分析歷史
+    
+    按時間倒序排列
+    """
+    llm_service = LLMService(db)
+    results = await llm_service.get_analysis_history(case_id, limit=limit)
+    
+    return {
+        "analyses": [
+            LLMAnalysisResponse(
+                id=r.id,
+                caseId=r.case_id,
+                status=r.status,
+                result=r.result,
+                errorMessage=r.error_message,
+                latencyMs=r.latency_ms,
+                createdAt=r.created_at,
+            ).model_dump()
+            for r in results
+        ],
+        "total": len(results),
+    }
+
+
+@router.get("/{case_id}/llm-settings")
+async def get_llm_settings_for_case(
+    case_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """取得 LLM 設定狀態（用於前端判斷是否顯示分析按鈕）
+    
+    回傳 LLM 是否已設定、是否啟用自動分析
+    """
+    llm_service = LLMService(db)
+    settings = await llm_service.get_settings()
+    
+    return {
+        "isConfigured": settings.is_configured(),
+        "autoAnalyze": settings.auto_analyze,
+    }
 

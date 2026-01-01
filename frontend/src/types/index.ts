@@ -542,3 +542,137 @@ export interface SyncStatusResponse {
   syncIntervalSeconds: number
 }
 
+// === LLM Settings ===
+
+export interface LLMSettings {
+  endpoint_url: string
+  model_name: string
+  has_api_key: boolean
+  system_prompt: string
+  user_prompt_template: string
+  auto_analyze: boolean
+  timeout_seconds: number
+  max_tokens: number
+  temperature: number
+  is_configured: boolean
+}
+
+export interface LLMSettingsUpdate {
+  endpoint_url: string
+  model_name: string
+  api_key?: string
+  system_prompt: string
+  user_prompt_template: string
+  auto_analyze: boolean
+  timeout_seconds: number
+  max_tokens: number
+  temperature: number
+}
+
+export interface LLMTestConnectionResponse {
+  success: boolean
+  message: string
+  latency_ms: number | null
+}
+
+export interface LLMDefaultPrompts {
+  system_prompt: string
+  user_prompt_template: string
+}
+
+// === LLM Analysis ===
+
+export type ExamDecisionStatus = 'APPROPRIATE' | 'POTENTIALLY_APPROPRIATE' | 'NOT_APPROPRIATE' | 'INSUFFICIENT_DATA'
+
+export interface ExamDecisionRationale {
+  statement: string
+  evidence: {
+    ref: string
+    path: string
+    snippet: string
+  }[]
+}
+
+export interface MissingDataItem {
+  dataItem: 'WEIGHT_KG' | 'RENAL_FUNCTION' | 'ALLERGY' | 'INDICATION_DETAILS' | 'PREGNANCY_STATUS' | 'OTHER'
+  whyNeeded: string
+  howToObtain: string
+}
+
+export interface ContraindicationSignal {
+  signal: string
+  severity: 'INFO' | 'WARN' | 'HIGH'
+  evidence: {
+    ref: string
+    path: string
+    snippet: string
+  }[]
+}
+
+export interface ExamDecision {
+  status: ExamDecisionStatus
+  rationale: ExamDecisionRationale[]
+  missingData: MissingDataItem[]
+  contraindicationSignals: ContraindicationSignal[]
+}
+
+export interface CaseSummary {
+  oneLiner: string
+  indication: string
+  keyHistory: string[]
+  keyLabs: string[]
+  allergies: string[]
+  recentImaging: string[]
+}
+
+export interface CDSSFlagExplained {
+  code: string
+  severity: 'INFO' | 'WARN' | 'FAIL'
+  title: string
+  explain: string
+  recommendation: string
+}
+
+export interface NextAction {
+  action: 'COLLECT_DATA' | 'ADJUST_PROTOCOL' | 'PHARM_REVIEW' | 'CONTACT_ORDERING_MD' | 'DEFER_EXAM'
+  details: string
+}
+
+export interface CDSSIntegration {
+  overallSeverity: 'PASS' | 'WARN' | 'FAIL'
+  isBatchEligible: boolean
+  flagsExplained: CDSSFlagExplained[]
+  nextActions: NextAction[]
+}
+
+export interface AnalysisQuality {
+  limitations: string[]
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW'
+}
+
+export interface LLMAnalysisResult {
+  examDecision?: ExamDecision
+  caseSummary?: CaseSummary
+  cdssIntegration?: CDSSIntegration
+  quality?: AnalysisQuality
+  raw_content?: string
+  parse_error?: string
+}
+
+export type LLMAnalysisStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+
+export interface LLMAnalysisResponse {
+  id: string
+  caseId: string
+  status: LLMAnalysisStatus
+  result: LLMAnalysisResult | null
+  errorMessage: string | null
+  latencyMs: number | null
+  createdAt: string | null
+}
+
+export interface LLMSettingsStatus {
+  isConfigured: boolean
+  autoAnalyze: boolean
+}
+

@@ -8,6 +8,7 @@ import { AnalyticsPage } from './pages/AnalyticsPage'
 import { AuthCallbackPage } from './pages/AuthCallbackPage'
 import { UserManagementPage } from './pages/UserManagementPage'
 import { SyncLogPage } from './pages/SyncLogPage'
+import { SettingsPage } from './pages/SettingsPage'
 import { useAuth } from './contexts/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
@@ -41,6 +42,9 @@ function App() {
         
         {/* 使用者管理（管理員專用） */}
         <Route path="/admin/users" element={<UserManagementPage />} />
+        
+        {/* 系統設定（管理員專用） */}
+        <Route path="/settings" element={<SettingsPage />} />
         
         {/* 預設路由 */}
         <Route path="/" element={

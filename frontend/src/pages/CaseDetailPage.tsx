@@ -57,6 +57,10 @@ import {
   MedicalServices as ProcedureIcon,
   HealthAndSafety as AllergyIcon,
   Assignment as DiagnosisIcon,
+  SmartToy as AIIcon,
+  Psychology as AnalysisIcon,
+  Checklist as ChecklistIcon,
+  Speed as SpeedIcon,
 } from '@mui/icons-material'
 import Accordion from '@mui/material/Accordion'
 import AccordionSummary from '@mui/material/AccordionSummary'
@@ -83,6 +87,8 @@ import {
   ProcedureInfo,
   LabResultInfo,
   AllergyInfo,
+  LLMAnalysisResponse,
+  LLMSettingsStatus,
 } from '../types'
 import { severityColors, statusColors } from '../theme'
 
@@ -477,6 +483,9 @@ export function CaseDetailPage() {
 
           {/* 臨床資料展示區塊 */}
           <ClinicalDataPanel snapshot={snapshot} />
+
+          {/* AI 輔助分析面板 */}
+          <AIAnalysisPanel caseId={caseId!} />
 
           {/* 藥師意見與審查歷程 - 只在有退回相關事件時顯示 */}
           {snapshot.reviewEvents && snapshot.reviewEvents.length > 0 && (
@@ -1374,6 +1383,426 @@ export function CaseDetailPage() {
     </Box>
   )
 }
+
+// === AI 輔助分析元件 ===
+
+interface AIAnalysisPanelProps {
+  caseId: string
+}
+
+/** AI 輔助分析面板 */
+function AIAnalysisPanel({ caseId }: AIAnalysisPanelProps) {
+  const queryClient = useQueryClient()
+  const { getAuthHeaders } = useAuth()
+  const [expanded, setExpanded] = useState(false)
+  
+  // 取得 LLM 設定狀態
+  const { data: llmStatus } = useQuery<LLMSettingsStatus>({
+    queryKey: ['llm-settings-status', caseId],
+    queryFn: async () => {
+      apiClient.setAuthHeaders(getAuthHeaders())
+      return apiClient.get<LLMSettingsStatus>(`/cases/${caseId}/llm-settings`)
+    },
+  })
+  
+  // 取得最近的分析結果
+  const { data: analysis, isLoading: isLoadingAnalysis } = useQuery<LLMAnalysisResponse | null>({
+    queryKey: ['llm-analysis', caseId],
+    queryFn: async () => {
+      apiClient.setAuthHeaders(getAuthHeaders())
+      return apiClient.get<LLMAnalysisResponse | null>(`/cases/${caseId}/llm-analysis`)
+    },
+    enabled: !!llmStatus?.isConfigured,
+  })
+  
+  // 觸發分析 mutation
+  const analyzeMutation = useMutation({
+    mutationFn: async () => {
+      apiClient.setAuthHeaders(getAuthHeaders())
+      return apiClient.post<LLMAnalysisResponse>(`/cases/${caseId}/llm-analysis`, {
+        trigger_type: 'MANUAL',
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['llm-analysis', caseId] })
+    },
+  })
+  
+  // 自動分析
+  useEffect(() => {
+    if (llmStatus?.isConfigured && llmStatus?.autoAnalyze && !analysis && !isLoadingAnalysis) {
+      analyzeMutation.mutate()
+    }
+  }, [llmStatus, analysis, isLoadingAnalysis])
+  
+  // 如果 LLM 未設定，顯示提示
+  if (!llmStatus?.isConfigured) {
+    return (
+      <Accordion sx={{ mb: 2 }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <AIIcon color="disabled" />
+            <Typography variant="h6" color="text.secondary">AI 輔助分析</Typography>
+            <Chip label="未設定" size="small" color="default" />
+          </Stack>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Alert severity="info">
+            LLM 尚未設定。請至「系統設定」頁面配置 LLM API 以啟用 AI 輔助分析功能。
+          </Alert>
+        </AccordionDetails>
+      </Accordion>
+    )
+  }
+  
+  const isAnalyzing = analyzeMutation.isPending || analysis?.status === 'PROCESSING'
+  const hasResult = analysis?.status === 'COMPLETED' && analysis.result
+  const hasFailed = analysis?.status === 'FAILED'
+  
+  return (
+    <Accordion expanded={expanded} onChange={() => setExpanded(!expanded)} sx={{ mb: 2 }}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ width: '100%' }}>
+          <AIIcon color={hasResult ? 'primary' : 'action'} />
+          <Typography variant="h6">AI 輔助分析</Typography>
+          {isAnalyzing && <CircularProgress size={16} />}
+          {hasResult && (
+            <>
+              <Chip 
+                label={analysis.result?.examDecision?.status || 'COMPLETED'} 
+                size="small" 
+                color={
+                  analysis.result?.examDecision?.status === 'APPROPRIATE' ? 'success' :
+                  analysis.result?.examDecision?.status === 'NOT_APPROPRIATE' ? 'error' :
+                  analysis.result?.examDecision?.status === 'INSUFFICIENT_DATA' ? 'warning' :
+                  'info'
+                }
+              />
+              {analysis.latencyMs && (
+                <Chip 
+                  icon={<SpeedIcon />}
+                  label={`${(analysis.latencyMs / 1000).toFixed(1)}s`} 
+                  size="small" 
+                  variant="outlined"
+                />
+              )}
+            </>
+          )}
+          {hasFailed && <Chip label="分析失敗" size="small" color="error" />}
+          <Box sx={{ flexGrow: 1 }} />
+          <Button
+            size="small"
+            variant={hasResult ? 'outlined' : 'contained'}
+            startIcon={isAnalyzing ? <CircularProgress size={14} /> : <AnalysisIcon />}
+            onClick={(e) => {
+              e.stopPropagation()
+              analyzeMutation.mutate()
+            }}
+            disabled={isAnalyzing}
+          >
+            {hasResult ? '重新分析' : '執行分析'}
+          </Button>
+        </Stack>
+      </AccordionSummary>
+      <AccordionDetails>
+        {isAnalyzing && !hasResult && (
+          <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+            <Stack alignItems="center" spacing={2}>
+              <CircularProgress />
+              <Typography color="text.secondary">正在執行 AI 分析...</Typography>
+            </Stack>
+          </Box>
+        )}
+        
+        {hasFailed && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            分析失敗：{analysis?.errorMessage || '未知錯誤'}
+          </Alert>
+        )}
+        
+        {hasResult && analysis.result && (
+          <Stack spacing={3}>
+            {/* 病例摘要 */}
+            {analysis.result.caseSummary && (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" alignItems="center" spacing={1} mb={2}>
+                  <DiagnosisIcon color="primary" />
+                  <Typography variant="subtitle1" fontWeight={600}>病例摘要</Typography>
+                </Stack>
+                
+                {analysis.result.caseSummary.oneLiner && (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    <Typography variant="body2" fontWeight={600}>
+                      {analysis.result.caseSummary.oneLiner}
+                    </Typography>
+                  </Alert>
+                )}
+                
+                <Grid container spacing={2}>
+                  {analysis.result.caseSummary.indication && (
+                    <Grid item xs={12}>
+                      <Typography variant="body2" color="text.secondary">適應症</Typography>
+                      <Typography>{analysis.result.caseSummary.indication}</Typography>
+                    </Grid>
+                  )}
+                  {analysis.result.caseSummary.keyHistory?.length > 0 && (
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="body2" color="text.secondary">重要病史</Typography>
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                        {analysis.result.caseSummary.keyHistory.map((h, i) => (
+                          <Chip key={i} label={h} size="small" variant="outlined" />
+                        ))}
+                      </Stack>
+                    </Grid>
+                  )}
+                  {analysis.result.caseSummary.keyLabs?.length > 0 && (
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="body2" color="text.secondary">關鍵檢驗</Typography>
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                        {analysis.result.caseSummary.keyLabs.map((l, i) => (
+                          <Chip key={i} label={l} size="small" color="info" variant="outlined" />
+                        ))}
+                      </Stack>
+                    </Grid>
+                  )}
+                  {analysis.result.caseSummary.allergies?.length > 0 && (
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="body2" color="text.secondary">過敏</Typography>
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                        {analysis.result.caseSummary.allergies.map((a, i) => (
+                          <Chip key={i} label={a} size="small" color="error" variant="outlined" />
+                        ))}
+                      </Stack>
+                    </Grid>
+                  )}
+                </Grid>
+              </Paper>
+            )}
+            
+            {/* 適應症評估 */}
+            {analysis.result.examDecision && (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" alignItems="center" spacing={1} mb={2}>
+                  <ChecklistIcon color={
+                    analysis.result.examDecision.status === 'APPROPRIATE' ? 'success' :
+                    analysis.result.examDecision.status === 'NOT_APPROPRIATE' ? 'error' : 'warning'
+                  } />
+                  <Typography variant="subtitle1" fontWeight={600}>適應症評估</Typography>
+                  <Chip 
+                    label={
+                      analysis.result.examDecision.status === 'APPROPRIATE' ? '適當' :
+                      analysis.result.examDecision.status === 'POTENTIALLY_APPROPRIATE' ? '可能適當' :
+                      analysis.result.examDecision.status === 'NOT_APPROPRIATE' ? '不適當' :
+                      '資料不足'
+                    }
+                    color={
+                      analysis.result.examDecision.status === 'APPROPRIATE' ? 'success' :
+                      analysis.result.examDecision.status === 'NOT_APPROPRIATE' ? 'error' : 'warning'
+                    }
+                  />
+                </Stack>
+                
+                {/* 理由 */}
+                {analysis.result.examDecision.rationale?.length > 0 && (
+                  <Box mb={2}>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>評估理由</Typography>
+                    <List dense>
+                      {analysis.result.examDecision.rationale.map((r, i) => (
+                        <ListItem key={i}>
+                          <ListItemIcon><PassIcon color="success" fontSize="small" /></ListItemIcon>
+                          <ListItemText 
+                            primary={r.statement}
+                            secondary={r.evidence?.map(e => e.ref).join(', ')}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </Box>
+                )}
+                
+                {/* 缺少資料 */}
+                {analysis.result.examDecision.missingData?.length > 0 && (
+                  <Box mb={2}>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>缺少資料</Typography>
+                    <List dense>
+                      {analysis.result.examDecision.missingData.map((m, i) => (
+                        <ListItem key={i}>
+                          <ListItemIcon><WarningIcon color="warning" fontSize="small" /></ListItemIcon>
+                          <ListItemText 
+                            primary={m.dataItem}
+                            secondary={
+                              <>
+                                <Typography variant="caption" display="block">原因: {m.whyNeeded}</Typography>
+                                <Typography variant="caption" display="block">取得方式: {m.howToObtain}</Typography>
+                              </>
+                            }
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </Box>
+                )}
+                
+                {/* 禁忌症訊號 */}
+                {analysis.result.examDecision.contraindicationSignals?.length > 0 && (
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>禁忌症訊號</Typography>
+                    <List dense>
+                      {analysis.result.examDecision.contraindicationSignals.map((c, i) => (
+                        <ListItem key={i}>
+                          <ListItemIcon>
+                            {c.severity === 'HIGH' ? <ErrorIcon color="error" fontSize="small" /> :
+                             c.severity === 'WARN' ? <WarningIcon color="warning" fontSize="small" /> :
+                             <InfoIcon color="info" fontSize="small" />}
+                          </ListItemIcon>
+                          <ListItemText primary={c.signal} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </Box>
+                )}
+              </Paper>
+            )}
+            
+            {/* CDSS 整合建議 */}
+            {analysis.result.cdssIntegration && (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" alignItems="center" spacing={1} mb={2}>
+                  <DoseIcon color="primary" />
+                  <Typography variant="subtitle1" fontWeight={600}>CDSS 整合建議</Typography>
+                  <Chip 
+                    label={analysis.result.cdssIntegration.overallSeverity}
+                    size="small"
+                    color={
+                      analysis.result.cdssIntegration.overallSeverity === 'PASS' ? 'success' :
+                      analysis.result.cdssIntegration.overallSeverity === 'FAIL' ? 'error' : 'warning'
+                    }
+                  />
+                  {analysis.result.cdssIntegration.isBatchEligible && (
+                    <Chip label="可批次核准" size="small" color="success" variant="outlined" />
+                  )}
+                </Stack>
+                
+                {/* 下一步行動 */}
+                {analysis.result.cdssIntegration.nextActions?.length > 0 && (
+                  <Box mb={2}>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>建議行動</Typography>
+                    <List dense>
+                      {analysis.result.cdssIntegration.nextActions.map((a, i) => (
+                        <ListItem key={i}>
+                          <ListItemIcon>
+                            <Chip 
+                              label={
+                                a.action === 'COLLECT_DATA' ? '收集資料' :
+                                a.action === 'ADJUST_PROTOCOL' ? '調整方案' :
+                                a.action === 'PHARM_REVIEW' ? '藥師審查' :
+                                a.action === 'CONTACT_ORDERING_MD' ? '聯繫開單醫師' :
+                                '延後檢查'
+                              }
+                              size="small"
+                              color={
+                                a.action === 'DEFER_EXAM' ? 'error' :
+                                a.action === 'COLLECT_DATA' ? 'warning' : 'info'
+                              }
+                            />
+                          </ListItemIcon>
+                          <ListItemText primary={a.details} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </Box>
+                )}
+                
+                {/* Flags 說明 */}
+                {analysis.result.cdssIntegration.flagsExplained?.length > 0 && (
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>Flag 說明</Typography>
+                    <List dense>
+                      {analysis.result.cdssIntegration.flagsExplained.map((f, i) => (
+                        <ListItem key={i}>
+                          <ListItemIcon>
+                            {f.severity === 'FAIL' ? <ErrorIcon color="error" fontSize="small" /> :
+                             f.severity === 'WARN' ? <WarningIcon color="warning" fontSize="small" /> :
+                             <InfoIcon color="info" fontSize="small" />}
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary={f.title}
+                            secondary={
+                              <>
+                                <Typography variant="caption" display="block">{f.explain}</Typography>
+                                {f.recommendation && (
+                                  <Typography variant="caption" display="block" color="primary">
+                                    建議: {f.recommendation}
+                                  </Typography>
+                                )}
+                              </>
+                            }
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </Box>
+                )}
+              </Paper>
+            )}
+            
+            {/* 分析品質 */}
+            {analysis.result.quality && (
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <Typography variant="body2" color="text.secondary">分析信心度:</Typography>
+                  <Chip 
+                    label={
+                      analysis.result.quality.confidence === 'HIGH' ? '高' :
+                      analysis.result.quality.confidence === 'MEDIUM' ? '中' : '低'
+                    }
+                    size="small"
+                    color={
+                      analysis.result.quality.confidence === 'HIGH' ? 'success' :
+                      analysis.result.quality.confidence === 'MEDIUM' ? 'warning' : 'error'
+                    }
+                    variant="outlined"
+                  />
+                  {analysis.result.quality.limitations?.length > 0 && (
+                    <Tooltip title={analysis.result.quality.limitations.join('; ')}>
+                      <Chip 
+                        label={`${analysis.result.quality.limitations.length} 項限制`}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </Tooltip>
+                  )}
+                </Stack>
+              </Paper>
+            )}
+            
+            {/* 原始回應（如果解析失敗） */}
+            {analysis.result.raw_content && analysis.result.parse_error && (
+              <Alert severity="warning">
+                <Typography variant="body2" fontWeight={600} gutterBottom>
+                  LLM 回應無法解析為預期格式
+                </Typography>
+                <Typography variant="caption" component="pre" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {analysis.result.raw_content.slice(0, 500)}...
+                </Typography>
+              </Alert>
+            )}
+          </Stack>
+        )}
+        
+        {!isAnalyzing && !hasResult && !hasFailed && (
+          <Box display="flex" justifyContent="center" py={4}>
+            <Stack alignItems="center" spacing={2}>
+              <AIIcon sx={{ fontSize: 48, color: 'action.disabled' }} />
+              <Typography color="text.secondary">點擊「執行分析」開始 AI 輔助分析</Typography>
+            </Stack>
+          </Box>
+        )}
+      </AccordionDetails>
+    </Accordion>
+  )
+}
+
 
 // === 臨床資料展示元件 ===
 

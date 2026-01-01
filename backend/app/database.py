@@ -40,7 +40,7 @@ async_session_maker = async_sessionmaker(
 async def init_db():
     """初始化資料庫（建立所有資料表）"""
     # 匯入所有模型以確保它們被註冊
-    from app.models import order_case, review_event, outbox, user  # noqa: F401
+    from app.models import order_case, review_event, outbox, user, settings, llm_analysis  # noqa: F401
     
     async with engine.begin() as conn:
         # 啟用 WAL mode 以提升並發效能
