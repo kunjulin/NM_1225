@@ -41,40 +41,37 @@ class AnalyticsService:
         from_dt = datetime.combine(from_date, datetime.min.time()).isoformat()
         to_dt = datetime.combine(to_date, datetime.max.time()).isoformat()
         
-        # 總案件數
-        total_query = select(func.count(OrderCase.id)).where(
-            and_(
-                OrderCase.created_at >= from_dt,
-                OrderCase.created_at <= to_dt
-            )
-        )
-        total_result = await self.db.execute(total_query)
-        total_cases = total_result.scalar() or 0
-        
-        # 藥師介入事件 (RETURN + REJECT)
-        intervention_query = select(func.count(ReviewEvent.id)).where(
-            and_(
-                ReviewEvent.created_at >= from_dt,
-                ReviewEvent.created_at <= to_dt,
-                ReviewEvent.event_type.in_(["RETURN", "REJECT"])
-            )
-        )
-        intervention_result = await self.db.execute(intervention_query)
-        intervention_count = intervention_result.scalar() or 0
-        
-        # 已送審案件數
-        submitted_query = select(func.count(ReviewEvent.id)).where(
+        # 總案件數：使用 SUBMIT 事件的時間（送審時間），計算不重複的案件數
+        # 避免同一案件被退回後再次送審被重複計算
+        submitted_subquery = select(ReviewEvent.case_id).where(
             and_(
                 ReviewEvent.created_at >= from_dt,
                 ReviewEvent.created_at <= to_dt,
                 ReviewEvent.event_type == "SUBMIT"
             )
-        )
+        ).distinct().subquery()
+        submitted_query = select(func.count()).select_from(submitted_subquery)
         submitted_result = await self.db.execute(submitted_query)
-        submitted_count = submitted_result.scalar() or 0
+        total_cases = submitted_result.scalar() or 0
+        
+        # 藥師介入案件數：計算有被介入（RETURN 或 REJECT）的不重複案件數
+        # 避免同一案件被多次介入被重複計算
+        intervention_subquery = select(ReviewEvent.case_id).where(
+            and_(
+                ReviewEvent.created_at >= from_dt,
+                ReviewEvent.created_at <= to_dt,
+                ReviewEvent.event_type.in_(["RETURN", "REJECT"])
+            )
+        ).distinct().subquery()
+        intervention_query = select(func.count()).select_from(intervention_subquery)
+        intervention_result = await self.db.execute(intervention_query)
+        intervention_case_count = intervention_result.scalar() or 0
+        
+        # 已送審案件數（與總案件數相同，保留變數名稱以保持程式碼可讀性）
+        submitted_count = total_cases
         
         pharmacist_intervention_rate = (
-            intervention_count / submitted_count if submitted_count > 0 else 0.0
+            intervention_case_count / submitted_count if submitted_count > 0 else 0.0
         )
         
         # 退回原因分佈
