@@ -72,8 +72,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setState(defaultState)
       localStorage.removeItem('nm_auth')
       // 重定向到登入頁（如果不在登入頁）
-      if (window.location.pathname !== '/login' && window.location.pathname !== '/auth/callback') {
-        window.location.href = '/login'
+      // 使用 /fhir base path
+      if (window.location.pathname !== '/fhir/login' && window.location.pathname !== '/fhir/auth/callback') {
+        window.location.href = '/fhir/login'
       }
     })
   }, [])

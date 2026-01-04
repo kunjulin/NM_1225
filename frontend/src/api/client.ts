@@ -3,7 +3,8 @@
  * 使用 Fetch API 與後端通訊
  */
 
-const API_BASE_URL = '/api'
+// 使用 /fhir 子路徑部署時的 API base URL
+const API_BASE_URL = '/fhir/api'
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
@@ -79,9 +80,10 @@ export class ApiClient {
           this.onUnauthorized()
         } else {
           // 如果沒有設置回調，直接清除 localStorage 並重定向
+          // 使用 /fhir base path
           localStorage.removeItem('nm_auth')
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login'
+          if (window.location.pathname !== '/fhir/login') {
+            window.location.href = '/fhir/login'
           }
         }
       }

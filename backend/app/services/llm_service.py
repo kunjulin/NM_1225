@@ -261,9 +261,13 @@ class LLMService:
             # 添加額外參數（如禁用 thinking mode）
             payload.update(settings.get_api_payload_extra_params())
             
+            # 確保 URL 拼接正確（移除結尾斜線避免雙斜線）
+            endpoint_url = settings.endpoint_url.rstrip('/')
+            test_url = f"{endpoint_url}/chat/completions"
+            
             async with httpx.AsyncClient(timeout=settings.timeout_seconds) as client:
                 response = await client.post(
-                    f"{settings.endpoint_url}/chat/completions",
+                    test_url,
                     headers=headers,
                     json=payload,
                 )
@@ -376,9 +380,13 @@ class LLMService:
             # 添加額外參數（如禁用 thinking mode）
             payload.update(settings.get_api_payload_extra_params())
             
+            # 確保 URL 拼接正確（移除結尾斜線避免雙斜線）
+            endpoint_url = settings.endpoint_url.rstrip('/')
+            api_url = f"{endpoint_url}/chat/completions"
+            
             async with httpx.AsyncClient(timeout=settings.timeout_seconds) as client:
                 response = await client.post(
-                    f"{settings.endpoint_url}/chat/completions",
+                    api_url,
                     headers=headers,
                     json=payload,
                 )
