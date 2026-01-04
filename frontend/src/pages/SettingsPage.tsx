@@ -21,6 +21,11 @@ import {
   Slider,
   InputAdornment,
   Collapse,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material'
 import {
   Save as SaveIcon,
@@ -36,6 +41,8 @@ import {
   SmartToy as AIIcon,
   Error as ErrorIcon,
   Link as LinkIcon,
+  DeleteOutline as DeleteIcon,
+  Warning as WarningIcon,
 } from '@mui/icons-material'
 import Accordion from '@mui/material/Accordion'
 import AccordionSummary from '@mui/material/AccordionSummary'
@@ -74,6 +81,7 @@ export function SettingsPage() {
   const [showUserPrompt, setShowUserPrompt] = useState(false)
   const [showErrorLogs, setShowErrorLogs] = useState(false)
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null)
+  const [clearWorklistDialogOpen, setClearWorklistDialogOpen] = useState(false)
   const navigate = useNavigate()
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
     open: false,
@@ -206,6 +214,37 @@ export function SettingsPage() {
       setSnackbar({ open: true, message: `清除失敗: ${(error as Error).message}`, severity: 'error' })
     },
   })
+
+  // Clear worklist mutation
+  const clearWorklistMutation = useMutation({
+    mutationFn: async () => {
+      apiClient.setAuthHeaders(getAuthHeaders())
+      return apiClient.post<{ success: boolean; message: string; deleted_counts: { cases: number; review_events: number; outbox_items: number } }>('/settings/clear-worklist')
+    },
+    onSuccess: (data) => {
+      setClearWorklistDialogOpen(false)
+      const counts = data.deleted_counts
+      const message = counts.cases === 0 
+        ? '資料庫中沒有任何資料需要清除'
+        : `成功清除工作清單：${counts.cases} 個案件、${counts.review_events} 個審查事件、${counts.outbox_items} 個 Outbox 項目`
+      setSnackbar({ 
+        open: true, 
+        message, 
+        severity: 'success' 
+      })
+      // 重新整理相關查詢
+      queryClient.invalidateQueries({ queryKey: ['cases'] })
+      queryClient.invalidateQueries({ queryKey: ['worklist'] })
+    },
+    onError: (error) => {
+      setClearWorklistDialogOpen(false)
+      setSnackbar({ 
+        open: true, 
+        message: `清除失敗: ${(error as Error).message}`, 
+        severity: 'error' 
+      })
+    },
+  })
   
   const handleSave = () => {
     saveMutation.mutate(formData)
@@ -286,6 +325,38 @@ export function SettingsPage() {
           </Button>
         </Stack>
       </Box>
+      
+      {/* Clear Worklist Card */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Stack direction="row" alignItems="center" spacing={1} mb={3}>
+            <DeleteIcon color="error" />
+            <Typography variant="h6">清除工作清單</Typography>
+            <Chip label="危險操作" color="error" size="small" />
+          </Stack>
+          
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <Typography variant="body2" fontWeight={600} gutterBottom>
+              警告：此操作將永久刪除所有工作清單資料
+            </Typography>
+            <Typography variant="body2">
+              此功能會清除資料庫中所有的案件（OrderCase）、審查事件（ReviewEvent）和 Outbox 資料。
+              此操作無法復原，請確認您已備份重要資料。
+              清除後可重新匯入病患 FHIR 資料進行測試。
+            </Typography>
+          </Alert>
+          
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={clearWorklistMutation.isPending ? <CircularProgress size={16} /> : <DeleteIcon />}
+            onClick={() => setClearWorklistDialogOpen(true)}
+            disabled={clearWorklistMutation.isPending}
+          >
+            清除工作清單
+          </Button>
+        </CardContent>
+      </Card>
       
       {/* LLM Settings Card */}
       <Card sx={{ mb: 3 }}>
@@ -758,6 +829,67 @@ export function SettingsPage() {
           </Accordion>
         </CardContent>
       </Card>
+      
+      {/* Clear Worklist Confirmation Dialog */}
+      <Dialog 
+        open={clearWorklistDialogOpen} 
+        onClose={() => !clearWorklistMutation.isPending && setClearWorklistDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <WarningIcon color="error" />
+            <Typography variant="h6">確認清除工作清單</Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            <Alert severity="error" sx={{ mb: 2 }}>
+              <Typography variant="body1" fontWeight={600} gutterBottom>
+                此操作將永久刪除所有工作清單資料！
+              </Typography>
+            </Alert>
+            <Typography variant="body2" paragraph>
+              您即將清除以下所有資料：
+            </Typography>
+            <Box component="ul" sx={{ pl: 3, mb: 2 }}>
+              <li>
+                <Typography variant="body2">所有案件（OrderCase）及其 snapshot 資料</Typography>
+              </li>
+              <li>
+                <Typography variant="body2">所有審查事件（ReviewEvent）</Typography>
+              </li>
+              <li>
+                <Typography variant="body2">所有 Outbox 項目</Typography>
+              </li>
+            </Box>
+            <Typography variant="body2" color="error" fontWeight={600}>
+              此操作無法復原，請確認您已備份重要資料。
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 2 }}>
+              清除後可重新匯入病患 FHIR 資料進行測試。
+            </Typography>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setClearWorklistDialogOpen(false)}
+            disabled={clearWorklistMutation.isPending}
+          >
+            取消
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={clearWorklistMutation.isPending ? <CircularProgress size={16} /> : <DeleteIcon />}
+            onClick={() => clearWorklistMutation.mutate()}
+            disabled={clearWorklistMutation.isPending}
+          >
+            {clearWorklistMutation.isPending ? '清除中...' : '確認清除'}
+          </Button>
+        </DialogActions>
+      </Dialog>
       
       {/* Snackbar */}
       <Snackbar

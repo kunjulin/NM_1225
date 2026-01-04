@@ -286,3 +286,87 @@ async def clear_llm_error_logs(
         "message": f"已清除 {deleted_count} 筆 LLM 分析記錄",
         "deleted_count": deleted_count,
     }
+
+
+class ClearWorklistResponse(BaseModel):
+    """清除工作清單回應"""
+    success: bool
+    message: str
+    deleted_counts: dict = Field(default_factory=dict, description="各類型資料的刪除數量")
+
+
+@router.post("/clear-worklist", response_model=ClearWorklistResponse)
+async def clear_worklist(
+    current_user: CurrentUser = Depends(get_current_user),
+    db = Depends(get_db),
+):
+    """清除所有工作清單資料（包括 OrderCase, ReviewEvent, Outbox）
+    
+    此操作會清除所有 snapshot FHIR 資料，方便重新匯入病患 FHIR 資料測試。
+    僅管理員可執行。
+    """
+    # 檢查權限：僅 ADMIN 可執行
+    if current_user.acting_role.value != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只有管理員可以清除工作清單"
+        )
+    
+    from sqlalchemy import select, delete
+    from app.models import OrderCase, ReviewEvent, Outbox
+    
+    try:
+        # 1. 先統計現有資料
+        cases_result = await db.execute(select(OrderCase))
+        cases = cases_result.scalars().all()
+        case_count = len(cases)
+        
+        review_events_result = await db.execute(select(ReviewEvent))
+        review_events = review_events_result.scalars().all()
+        review_event_count = len(review_events)
+        
+        outbox_result = await db.execute(select(Outbox))
+        outbox_items = outbox_result.scalars().all()
+        outbox_count = len(outbox_items)
+        
+        if case_count == 0 and review_event_count == 0 and outbox_count == 0:
+            return ClearWorklistResponse(
+                success=True,
+                message="資料庫中沒有任何 snapshot 資料需要清除",
+                deleted_counts={
+                    "cases": 0,
+                    "review_events": 0,
+                    "outbox_items": 0,
+                }
+            )
+        
+        # 2. 刪除所有 ReviewEvent
+        if review_event_count > 0:
+            await db.execute(delete(ReviewEvent))
+        
+        # 3. 刪除所有 Outbox
+        if outbox_count > 0:
+            await db.execute(delete(Outbox))
+        
+        # 4. 刪除所有 OrderCase（包含 snapshot_json）
+        if case_count > 0:
+            await db.execute(delete(OrderCase))
+        
+        # 5. 提交變更
+        await db.commit()
+        
+        return ClearWorklistResponse(
+            success=True,
+            message=f"成功清除所有工作清單資料",
+            deleted_counts={
+                "cases": case_count,
+                "review_events": review_event_count,
+                "outbox_items": outbox_count,
+            }
+        )
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"清除工作清單時發生錯誤: {str(e)}"
+        )
