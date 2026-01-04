@@ -19,7 +19,6 @@ import {
 import {
   HealthAndSafety as FHIRIcon,
   CheckCircle as CheckIcon,
-  Warning as WarningIcon,
   Info as InfoIcon,
   OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material'
@@ -351,9 +350,9 @@ export function FHIRDataPage() {
                 borderRadius: 1,
                 fontSize: '0.875rem',
               }}>
-                GET /fhir/ServiceRequest{'\n'}
-                POST /fhir/MedicationRequest{'\n'}
-                GET /fhir/Patient/{id}
+                {`GET /fhir/ServiceRequest
+POST /fhir/MedicationRequest
+GET /fhir/Patient/\{id\}`}
               </Typography>
             </Box>
           </Stack>
