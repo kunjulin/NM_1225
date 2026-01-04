@@ -65,6 +65,9 @@ services:
     volumes:
       # 只持久化資料庫檔案，不覆蓋程式碼
       - backend-db:/app/data
+    networks:
+      - default
+      - struc_dotnet_app-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
@@ -84,9 +87,18 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    networks:
+      - default
+      - struc_dotnet_app-network
     restart: unless-stopped
 
 volumes:
   backend-db:
     name: nm-stewardship-backend-db-thas
+
+networks:
+  # 連接到主 nginx 的網路，以便 cgmh.ddns.net/fhir 可以訪問
+  struc_dotnet_app-network:
+    external: true
+    name: struc_dotnet_app-network
 
