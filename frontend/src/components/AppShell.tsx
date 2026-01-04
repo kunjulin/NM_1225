@@ -29,6 +29,7 @@ import {
   People as UsersIcon,
   Settings as SettingsIcon,
   Help as HelpIcon,
+  HealthAndSafety as FHIRIcon,
 } from '@mui/icons-material'
 import { useAuth, ActingRole } from '../contexts/AuthContext'
 import { HelpPage } from '../pages/HelpPage'
@@ -126,6 +127,12 @@ export function AppShell() {
       text: '分析儀表板',
       icon: <AnalyticsIcon />,
       path: '/analytics',
+      roles: ['NM_PHYSICIAN', 'PHARMACIST', 'ADMIN'] as ActingRole[],
+    },
+    {
+      text: 'FHIR資料',
+      icon: <FHIRIcon />,
+      path: '/fhir-data',
       roles: ['NM_PHYSICIAN', 'PHARMACIST', 'ADMIN'] as ActingRole[],
     },
     {

@@ -9,6 +9,7 @@ import { AuthCallbackPage } from './pages/AuthCallbackPage'
 import { UserManagementPage } from './pages/UserManagementPage'
 import { SyncLogPage } from './pages/SyncLogPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { FHIRDataPage } from './pages/FHIRDataPage'
 import { useAuth } from './contexts/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
@@ -39,6 +40,9 @@ function App() {
         
         {/* FHIR 同步記錄 */}
         <Route path="/analytics/sync-logs" element={<SyncLogPage />} />
+        
+        {/* FHIR 資料 */}
+        <Route path="/fhir-data" element={<FHIRDataPage />} />
         
         {/* 使用者管理（管理員專用） */}
         <Route path="/admin/users" element={<UserManagementPage />} />
