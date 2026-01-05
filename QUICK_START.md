@@ -100,7 +100,7 @@ Forwarding                    https://xxxx-xxxx-xxxx.ngrok-free.dev -> http://lo
 
 **重要：** 記下 `Forwarding` 中的 HTTPS URL，例如：
 ```
-https://clint-inexpert-mesmerizingly.ngrok-free.dev
+https://cgmh.ddns.net/fhir
 ```
 
 ### 4. 驗證 Ngrok 運行

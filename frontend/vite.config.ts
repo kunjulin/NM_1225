@@ -15,7 +15,7 @@ export default defineConfig({
       '.ngrok.io',
       '.ngrok-free.dev',
       '.ngrok.app',
-      'clint-inexpert-mesmerizingly.ngrok-free.dev',
+      'cgmh.ddns.net',
     ],
     proxy: {
       '/api': {
