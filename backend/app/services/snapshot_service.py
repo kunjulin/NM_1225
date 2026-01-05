@@ -900,85 +900,117 @@ class SnapshotService:
         
         允許醫師手動輸入缺少的臨床資料（如體重）
         """
-        case = await self._get_case(case_id)
-        
-        # 更新 local_facts
-        local_facts = json.loads(case.local_facts_json or "{}")
-        
-        fact_key = self._fact_type_to_key(request.factType)
-        local_facts[fact_key] = {
-            "value": request.value,
-            "unit": request.unit,
-            "asOf": datetime.now(timezone.utc).isoformat(),
-            "source": SourceType.MANUAL.value,
-            "enteredBy": current_user.subject,
-        }
-        
-        case.local_facts_json = json.dumps(local_facts)
-        case.updated_at = datetime.now(timezone.utc).isoformat()
-        
-        # 建立事件
-        event = ReviewEvent(
-            id=str(uuid.uuid4()),
-            case_id=case_id,
-            event_type="MANUAL_FACT_ENTRY",
-            actor_subject=current_user.subject,
-            acting_role=current_user.acting_role.value,
-            payload_json=json.dumps({
-                "factType": request.factType.value,
+        try:
+            case = await self._get_case(case_id)
+            
+            # 更新 local_facts
+            local_facts = json.loads(case.local_facts_json or "{}")
+            
+            fact_key = self._fact_type_to_key(request.factType)
+            local_facts[fact_key] = {
                 "value": request.value,
                 "unit": request.unit,
-            }, default=str),
-            created_at=datetime.now(timezone.utc).isoformat()
-        )
-        self.db.add(event)
-        
-        # 如果輸入的是體重，且現在有檢查代碼，自動重新計算劑量並更新草案
-        if request.factType.value == "WEIGHT_KG":
-            snapshot_data = json.loads(case.snapshot_json or "{}")
-            draft_data = json.loads(case.draft_json or "{}")
+                "asOf": datetime.now(timezone.utc).isoformat(),
+                "source": SourceType.MANUAL.value,
+                "enteredBy": current_user.subject,
+            }
             
-            # 取得檢查代碼
-            exam_code = draft_data.get("examCode") or snapshot_data.get("examCode")
-            weight_kg = request.value
-            
-            if exam_code:
-                # 重新計算 NA-2024 劑量
-                dose_calc = self.rule_engine.calculate_na2024_dose(exam_code, weight_kg)
-                
-                if dose_calc:
-                    # 更新草案劑量
-                    if not draft_data:
-                        draft_data = {}
-                    
-                    draft_data["examCode"] = exam_code
-                    draft_data["radiopharmaceuticalCode"] = exam_code
-                    draft_data["suggestedDose"] = {
-                        "value": dose_calc.suggested_dose,
-                        "unit": "MBq"
-                    }
-                    # 保留原有的 override 設定
-                    if "override" not in draft_data:
-                        draft_data["override"] = {"isOverride": False}
-                    
-                    case.draft_json = json.dumps(draft_data, ensure_ascii=False)
-        
-        await self.db.commit()
-        
-        # 重新評估規則（在更新草案後）
-        rule_eval = self.rule_engine.evaluate(case)
-        
-        # 如果 CDS 評估變為 PASS，且狀態為 NM_PENDING，自動更新為 NM_DRAFTED
-        from app.models.order_case import CaseStatus
-        from app.rules.engine import Severity
-        if rule_eval.overallSeverity == Severity.PASS and case.status == CaseStatus.NM_PENDING.value:
-            case.status = CaseStatus.NM_DRAFTED.value
+            case.local_facts_json = json.dumps(local_facts, ensure_ascii=False)
             case.updated_at = datetime.now(timezone.utc).isoformat()
+            
+            # 建立事件
+            event = ReviewEvent(
+                id=str(uuid.uuid4()),
+                case_id=case_id,
+                event_type="MANUAL_FACT_ENTRY",
+                actor_subject=current_user.subject,
+                acting_role=current_user.acting_role.value,
+                payload_json=json.dumps({
+                    "factType": request.factType.value,
+                    "value": request.value,
+                    "unit": request.unit,
+                }, default=str, ensure_ascii=False),
+                created_at=datetime.now(timezone.utc).isoformat()
+            )
+            self.db.add(event)
+            
+            # 如果輸入的是體重，且現在有檢查代碼，自動重新計算劑量並更新草案
+            if request.factType.value == "WEIGHT_KG":
+                try:
+                    snapshot_data = json.loads(case.snapshot_json or "{}")
+                    draft_data = json.loads(case.draft_json or "{}")
+                    
+                    # 取得檢查代碼
+                    exam_code = draft_data.get("examCode") or snapshot_data.get("examCode")
+                    weight_kg = request.value
+                    
+                    # 確保 weight_kg 是數字類型
+                    if isinstance(weight_kg, str):
+                        try:
+                            weight_kg = float(weight_kg)
+                        except (ValueError, TypeError):
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"無效的體重值: {weight_kg}"
+                            )
+                    
+                    if exam_code:
+                        # 重新計算 NA-2024 劑量
+                        dose_calc = self.rule_engine.calculate_na2024_dose(exam_code, weight_kg)
+                        
+                        if dose_calc:
+                            # 更新草案劑量
+                            if not draft_data:
+                                draft_data = {}
+                            
+                            draft_data["examCode"] = exam_code
+                            draft_data["radiopharmaceuticalCode"] = exam_code
+                            draft_data["suggestedDose"] = {
+                                "value": dose_calc.suggested_dose,
+                                "unit": "MBq"
+                            }
+                            # 保留原有的 override 設定
+                            if "override" not in draft_data:
+                                draft_data["override"] = {"isOverride": False}
+                            
+                            case.draft_json = json.dumps(draft_data, ensure_ascii=False)
+                except json.JSONDecodeError as e:
+                    import logging
+                    logging.getLogger(__name__).error(f"JSON 解析錯誤 in save_manual_fact for case {case_id}: {e}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"資料解析錯誤: {str(e)}"
+                    )
+            
             await self.db.commit()
-        
-        return ManualFactResponse(
-            caseId=case_id,
-            updatedLocalFacts=local_facts,
-            cds=rule_eval.model_dump()
-        )
+            
+            # 重新評估規則（在更新草案後）
+            rule_eval = self.rule_engine.evaluate(case)
+            
+            # 如果 CDS 評估變為 PASS，且狀態為 NM_PENDING，自動更新為 NM_DRAFTED
+            from app.models.order_case import CaseStatus
+            from app.schemas.rule_eval import Severity
+            if rule_eval.overallSeverity == Severity.PASS and case.status == CaseStatus.NM_PENDING.value:
+                case.status = CaseStatus.NM_DRAFTED.value
+                case.updated_at = datetime.now(timezone.utc).isoformat()
+                await self.db.commit()
+            
+            return ManualFactResponse(
+                caseId=case_id,
+                updatedLocalFacts=local_facts,
+                cds=rule_eval.model_dump()
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            import logging
+            import traceback
+            logging.getLogger(__name__).error(
+                f"儲存手動輸入資料失敗 (case_id={case_id}, factType={request.factType.value}): {str(e)}\n{traceback.format_exc()}",
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"儲存失敗: {str(e)}"
+            )
 
