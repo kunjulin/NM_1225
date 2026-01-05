@@ -988,7 +988,7 @@ class SnapshotService:
             rule_eval = self.rule_engine.evaluate(case)
             
             # 如果 CDS 評估變為 PASS，且狀態為 NM_PENDING，自動更新為 NM_DRAFTED
-            from app.models.order_case import CaseStatus
+            from app.schemas.case import CaseStatus
             from app.schemas.rule_eval import Severity
             if rule_eval.overallSeverity == Severity.PASS and case.status == CaseStatus.NM_PENDING.value:
                 case.status = CaseStatus.NM_DRAFTED.value
