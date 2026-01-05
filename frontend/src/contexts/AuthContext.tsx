@@ -7,6 +7,7 @@ export type ActingRole = 'NM_PHYSICIAN' | 'PHARMACIST' | 'ADMIN'
 // 認證狀態
 interface AuthState {
   subject: string
+  displayName: string
   actingRole: ActingRole
   isAuthenticated: boolean
   isDemo: boolean
@@ -14,7 +15,7 @@ interface AuthState {
 
 // Context 值
 interface AuthContextValue extends AuthState {
-  login: (subject: string, actingRole: ActingRole) => void
+  login: (subject: string, actingRole: ActingRole, displayName?: string) => Promise<void>
   logout: () => void
   setActingRole: (role: ActingRole) => void
   getAuthHeaders: () => Record<string, string>
@@ -23,6 +24,7 @@ interface AuthContextValue extends AuthState {
 // 預設狀態
 const defaultState: AuthState = {
   subject: '',
+  displayName: '',
   actingRole: 'NM_PHYSICIAN',
   isAuthenticated: false,
   isDemo: true, // 預設值，會從後端更新
@@ -79,10 +81,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
-  const login = useCallback((subject: string, actingRole: ActingRole) => {
+  const login = useCallback(async (subject: string, actingRole: ActingRole, displayName?: string) => {
+    // 如果沒有提供 displayName，嘗試從後端獲取
+    let userDisplayName = displayName || ''
+    if (!userDisplayName) {
+      try {
+        const userInfo = await apiClient.get<{ display_name: string }>(`/auth/user-info?subject=${subject}`)
+        userDisplayName = userInfo.display_name
+      } catch (err) {
+        // 如果獲取失敗，使用 subject 作為顯示名稱
+        userDisplayName = subject
+      }
+    }
+    
     const newState = {
       ...state,
       subject,
+      displayName: userDisplayName,
       actingRole,
       isAuthenticated: true,
     }

@@ -51,7 +51,7 @@ const roleColors: Record<ActingRole, 'primary' | 'secondary' | 'default'> = {
 export function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { subject, actingRole, isDemo, setActingRole, logout } = useAuth()
+  const { subject, displayName, actingRole, isDemo, setActingRole, logout } = useAuth()
   
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
@@ -250,17 +250,55 @@ export function AppShell() {
             <HelpIcon />
           </IconButton>
 
-          {/* User Menu */}
-          <IconButton
-            size="large"
-            edge="end"
-            color="inherit"
-            onClick={handleUserMenuOpen}
+          {/* User Info and Menu */}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              mr: 1,
+            }}
           >
-            <Avatar sx={{ width: 32, height: 32, bgcolor: 'secondary.main' }}>
-              {subject.charAt(0).toUpperCase()}
-            </Avatar>
-          </IconButton>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                mr: 1,
+              }}
+            >
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  color: 'inherit',
+                  lineHeight: 1.2,
+                }}
+              >
+                {displayName || subject}
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'inherit',
+                  opacity: 0.8,
+                  lineHeight: 1.2,
+                }}
+              >
+                {roleLabels[actingRole]}
+              </Typography>
+            </Box>
+            <IconButton
+              size="large"
+              edge="end"
+              color="inherit"
+              onClick={handleUserMenuOpen}
+            >
+              <Avatar sx={{ width: 32, height: 32, bgcolor: 'secondary.main' }}>
+                {(displayName || subject).charAt(0).toUpperCase()}
+              </Avatar>
+            </IconButton>
+          </Box>
         </Toolbar>
       </AppBar>
 
@@ -294,7 +332,7 @@ export function AppShell() {
       >
         <MenuItem disabled>
           <AccountCircle sx={{ mr: 1 }} />
-          {subject}
+          {displayName || subject}
         </MenuItem>
         <Divider />
         <MenuItem onClick={handleLogout}>

@@ -132,7 +132,7 @@ export function AuthCallbackPage() {
       } else if (response.allowed_roles.length === 1) {
         // 只有一個角色，自動登入
         const role = response.allowed_roles[0] as 'NM_PHYSICIAN' | 'PHARMACIST' | 'ADMIN'
-        login(response.subject!, role)
+        await login(response.subject!, role, response.display_name || undefined)
         setStatus('success')
         
         // 延遲後跳轉

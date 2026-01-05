@@ -78,7 +78,7 @@ export function LoginPage() {
     }
   }, [searchParams])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!subject.trim()) {
@@ -86,7 +86,7 @@ export function LoginPage() {
       return
     }
     
-    login(subject.trim(), actingRole)
+    await login(subject.trim(), actingRole)
     
     // 根據角色導向對應頁面
     if (actingRole === 'ADMIN') {
@@ -100,9 +100,9 @@ export function LoginPage() {
     }
   }
 
-  const handleQuickLogin = (role: ActingRole) => {
+  const handleQuickLogin = async (role: ActingRole) => {
     const demoSubject = role === 'NM_PHYSICIAN' ? 'demo-nm-physician' : 'demo-pharmacist'
-    login(demoSubject, role)
+    await login(demoSubject, role)
     
     if (role === 'NM_PHYSICIAN') {
       navigate('/nm/worklist')
@@ -129,10 +129,10 @@ export function LoginPage() {
     }
   }
 
-  const handleRoleSelect = (role: ActingRole) => {
+  const handleRoleSelect = async (role: ActingRole) => {
     if (!smartAuthResult?.subject) return
     
-    login(smartAuthResult.subject, role)
+    await login(smartAuthResult.subject, role, smartAuthResult.display_name || undefined)
     
     if (role === 'PHARMACIST') {
       navigate('/pharmacy/worklist')
