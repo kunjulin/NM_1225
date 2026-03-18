@@ -58,8 +58,9 @@ class Settings(BaseSettings):
     smart_client_id: str = ""
     smart_client_secret: str = ""  # 可選，視 THAS 要求
     smart_redirect_uri: str = "http://localhost:5173/auth/callback"
-    smart_authorization_endpoint: str = ""  # 從 THAS /.well-known/smart-configuration 取得
-    smart_token_endpoint: str = ""
+    smart_authorization_endpoint: str = ""  # 可選，留空則從 .well-known/smart-configuration 自動發現
+    smart_token_endpoint: str = ""  # 可選，留空則從 .well-known/smart-configuration 自動發現
+    smart_scopes: str = "openid fhirUser profile launch/patient patient/*.read"  # 授權範圍（system/* 僅限 Backend Service）
     
     # ServiceRequest 同步設定
     fhir_service_request_category: str = "394649004"  # 核醫 ServiceRequest 過濾條件 (SNOMED CT code for Nuclear medicine)

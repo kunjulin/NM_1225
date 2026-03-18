@@ -56,6 +56,67 @@ class AuthResult:
             self.allowed_roles = []
 
 
+@dataclass
+class SMARTEndpoints:
+    """SMART 授權端點"""
+    authorization_endpoint: str
+    token_endpoint: str
+
+
+# 模組層級快取，避免重複請求 .well-known
+_discovered_endpoints: Optional[SMARTEndpoints] = None
+
+
+async def discover_smart_endpoints(fhir_base_url: str, force: bool = False) -> SMARTEndpoints:
+    """從 FHIR Server 的 .well-known/smart-configuration 自動發現授權端點
+    
+    Args:
+        fhir_base_url: FHIR Server Base URL
+        force: 是否強制重新發現（忽略快取）
+        
+    Returns:
+        SMARTEndpoints 包含 authorization_endpoint 和 token_endpoint
+        
+    Raises:
+        RuntimeError: 無法取得或解析 .well-known/smart-configuration
+    """
+    global _discovered_endpoints
+    if _discovered_endpoints and not force:
+        return _discovered_endpoints
+    
+    well_known_url = f"{fhir_base_url}/.well-known/smart-configuration"
+    logger.info(f"正在從 {well_known_url} 發現 SMART 端點...")
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(well_known_url)
+            if response.status_code != 200:
+                raise RuntimeError(
+                    f"無法取得 SMART configuration ({response.status_code}): {well_known_url}"
+                )
+            
+            config = response.json()
+    except httpx.HTTPError as e:
+        raise RuntimeError(f"連線 {well_known_url} 失敗: {e}") from e
+    
+    auth_ep = config.get("authorization_endpoint")
+    token_ep = config.get("token_endpoint")
+    
+    if not auth_ep or not token_ep:
+        raise RuntimeError(
+            f"SMART configuration 缺少必要欄位: "
+            f"authorization_endpoint={'OK' if auth_ep else 'MISSING'}, "
+            f"token_endpoint={'OK' if token_ep else 'MISSING'}"
+        )
+    
+    _discovered_endpoints = SMARTEndpoints(
+        authorization_endpoint=auth_ep,
+        token_endpoint=token_ep,
+    )
+    logger.info(f"SMART 端點發現成功: auth={auth_ep}, token={token_ep}")
+    return _discovered_endpoints
+
+
 class SMARTAuthService:
     """SMART on FHIR 授權服務"""
     
@@ -64,7 +125,16 @@ class SMARTAuthService:
         self.settings = get_settings()
         self.fhir_client = FHIRClient()
     
-    def get_authorization_url(self, state: str) -> str:
+    async def _resolve_endpoints(self) -> SMARTEndpoints:
+        """取得授權端點：優先使用手動設定，否則自動發現"""
+        if self.settings.smart_authorization_endpoint and self.settings.smart_token_endpoint:
+            return SMARTEndpoints(
+                authorization_endpoint=self.settings.smart_authorization_endpoint,
+                token_endpoint=self.settings.smart_token_endpoint,
+            )
+        return await discover_smart_endpoints(self.settings.fhir_base_url)
+    
+    async def get_authorization_url(self, state: str) -> str:
         """產生授權 URL
         
         Args:
@@ -73,27 +143,36 @@ class SMARTAuthService:
         Returns:
             THAS 授權頁面 URL
         """
+        endpoints = await self._resolve_endpoints()
+        
         params = {
             "response_type": "code",
             "client_id": self.settings.smart_client_id,
             "redirect_uri": self.settings.smart_redirect_uri,
-            "scope": "openid fhirUser profile",
+            "scope": self.settings.smart_scopes,
             "state": state,
             "aud": self.settings.fhir_base_url,
         }
         
         query_string = "&".join(f"{k}={v}" for k, v in params.items())
-        return f"{self.settings.smart_authorization_endpoint}?{query_string}"
+        return f"{endpoints.authorization_endpoint}?{query_string}"
     
-    async def exchange_code_for_token(self, code: str) -> Optional[SMARTTokenResponse]:
+    async def exchange_code_for_token(self, code: str, token_endpoint_override: Optional[str] = None) -> Optional[SMARTTokenResponse]:
         """用授權碼換取 access token
         
         Args:
             code: 授權碼
+            token_endpoint_override: 動態 token 端點（EHR Launch 時使用）
             
         Returns:
             Token 回應，失敗時返回 None
         """
+        if token_endpoint_override:
+            token_endpoint = token_endpoint_override
+        else:
+            endpoints = await self._resolve_endpoints()
+            token_endpoint = endpoints.token_endpoint
+        
         data = {
             "grant_type": "authorization_code",
             "code": code,
@@ -101,14 +180,13 @@ class SMARTAuthService:
             "client_id": self.settings.smart_client_id,
         }
         
-        # 如果有 client_secret，加入請求
         if self.settings.smart_client_secret:
             data["client_secret"] = self.settings.smart_client_secret
         
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
-                    self.settings.smart_token_endpoint,
+                    token_endpoint,
                     data=data,
                     headers={"Content-Type": "application/x-www-form-urlencoded"}
                 )
@@ -187,7 +265,7 @@ class SMARTAuthService:
             logger.error(f"Failed to get Practitioner: {e}")
             return {}
     
-    async def authenticate_with_code(self, code: str) -> AuthResult:
+    async def authenticate_with_code(self, code: str, token_endpoint_override: Optional[str] = None) -> AuthResult:
         """完整的 SMART 認證流程
         
         1. 用授權碼換取 token
@@ -197,12 +275,13 @@ class SMARTAuthService:
         
         Args:
             code: 授權碼
+            token_endpoint_override: 動態 token 端點（EHR Launch 時使用）
             
         Returns:
             認證結果
         """
         # Step 1: 換取 token
-        token_response = await self.exchange_code_for_token(code)
+        token_response = await self.exchange_code_for_token(code, token_endpoint_override)
         if not token_response:
             return AuthResult(success=False, error="Token exchange failed")
         

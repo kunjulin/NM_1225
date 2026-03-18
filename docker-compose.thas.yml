@@ -16,11 +16,12 @@
 #   - 測試類型: Provider Standalone Launch Test
 #
 # SMART on FHIR 設定:
-#   若要啟用 SMART 登入，需設定以下環境變數:
+#   若要啟用 SMART 登入，需設定 NM_SMART_CLIENT_ID 和 NM_SMART_CLIENT_SECRET
+#   authorization_endpoint 和 token_endpoint 會從 .well-known/smart-configuration 自動發現
 #   - NM_SMART_CLIENT_ID: THAS 發放的 Client ID
-#   - NM_SMART_AUTHORIZATION_ENDPOINT: THAS 授權端點
-#   - NM_SMART_TOKEN_ENDPOINT: THAS Token 端點
-#   - NM_SMART_REDIRECT_URI: 回呼 URL (預設 http://localhost:5173/auth/callback)
+#   - NM_SMART_CLIENT_SECRET: THAS 發放的 Client Secret
+#   - NM_SMART_REDIRECT_URI: 回呼 URL (預設 https://cgmh.ddns.net/fhir/auth/callback)
+#   - NM_SMART_SCOPES: 授權範圍 (system/* 僅限 Backend Service)
 
 services:
   # Backend - FastAPI 後端服務
@@ -55,11 +56,13 @@ services:
       - NM_CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://frontend:80"]
       
       # SMART on FHIR OAuth2 設定 (Production Mode 需要)
-      # 請從 THAS 取得並設定這些值
-      # 注意：NM_SMART_REDIRECT_URI 必須與 THAS SAND-BOX 中設定的 Launch URL 完全一致
-      - NM_SMART_CLIENT_ID=${NM_SMART_CLIENT_ID:-}
-      - NM_SMART_CLIENT_SECRET=${NM_SMART_CLIENT_SECRET:-}
+      # 第二階段測試憑證（僅供內部測試，不供產品化使用）
+      # 注意：NM_SMART_REDIRECT_URI 必須與 THAS 中設定的 Redirect URI 完全一致
+      - NM_SMART_CLIENT_ID=${NM_SMART_CLIENT_ID:-cc344727-6f90-496c-94fd-c7829aa9a51d}
+      - NM_SMART_CLIENT_SECRET=${NM_SMART_CLIENT_SECRET:-79f04b56b33491716c0880af72cdef7d3f0629111421cedd18353651cd313d9e}
       - NM_SMART_REDIRECT_URI=${NM_SMART_REDIRECT_URI:-https://cgmh.ddns.net/fhir/auth/callback}
+      - NM_SMART_SCOPES=${NM_SMART_SCOPES:-openid fhirUser profile launch/patient patient/*.read}
+      # 以下端點留空，系統會從 FHIR Server 的 .well-known/smart-configuration 自動發現
       - NM_SMART_AUTHORIZATION_ENDPOINT=${NM_SMART_AUTHORIZATION_ENDPOINT:-}
       - NM_SMART_TOKEN_ENDPOINT=${NM_SMART_TOKEN_ENDPOINT:-}
     volumes:
