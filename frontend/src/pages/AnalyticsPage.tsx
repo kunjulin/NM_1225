@@ -111,7 +111,7 @@ export function AnalyticsPage() {
     try {
       const headers = getAuthHeaders()
       const response = await fetch(
-        `/api/analytics/export/csv?from=${fromDate}&to=${toDate}`,
+        `/fhir/api/analytics/export/csv?from=${fromDate}&to=${toDate}`,
         { headers }
       )
       

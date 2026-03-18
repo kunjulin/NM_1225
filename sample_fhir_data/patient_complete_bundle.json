@@ -1731,7 +1731,7 @@
           "reference": "Patient/patient-1007",
           "display": "王大明"
         },
-        "occurrenceDateTime": "2024-12-26T10:00:00+08:00",
+        "occurrenceDateTime": "2026-03-22T10:00:00+08:00",
         "authoredOn": "2024-12-25T09:00:00+08:00",
         "requester": {
           "reference": "Practitioner/dr-001",
@@ -1868,7 +1868,7 @@
           "reference": "Patient/patient-1001",
           "display": "劉大偉"
         },
-        "occurrenceDateTime": "2026-01-03T09:00:00+08:00",
+        "occurrenceDateTime": "2026-03-22T09:00:00+08:00",
         "authoredOn": "2025-12-27T20:26:38+08:00",
         "requester": {
           "reference": "Practitioner/clinical-doc-001",
@@ -2301,7 +2301,7 @@
           "reference": "Patient/patient-1002",
           "display": "張小雨"
         },
-        "occurrenceDateTime": "2026-01-03T09:00:00+08:00",
+        "occurrenceDateTime": "2026-03-22T09:00:00+08:00",
         "authoredOn": "2025-12-27T20:26:38+08:00",
         "requester": {
           "reference": "Practitioner/clinical-doc-001",
@@ -2784,7 +2784,7 @@
           "reference": "Patient/patient-1003",
           "display": "吳小明"
         },
-        "occurrenceDateTime": "2026-01-03T09:00:00+08:00",
+        "occurrenceDateTime": "2026-03-22T09:00:00+08:00",
         "authoredOn": "2025-12-27T20:26:38+08:00",
         "requester": {
           "reference": "Practitioner/clinical-doc-001",
@@ -3217,7 +3217,7 @@
           "reference": "Patient/patient-1004",
           "display": "黃小芳"
         },
-        "occurrenceDateTime": "2026-01-03T09:00:00+08:00",
+        "occurrenceDateTime": "2026-03-22T09:00:00+08:00",
         "authoredOn": "2025-12-27T20:26:38+08:00",
         "requester": {
           "reference": "Practitioner/clinical-doc-001",
@@ -3723,7 +3723,7 @@
           "reference": "Patient/patient-1005",
           "display": "陳志強"
         },
-        "occurrenceDateTime": "2026-01-03T09:00:00+08:00",
+        "occurrenceDateTime": "2026-03-22T09:00:00+08:00",
         "authoredOn": "2025-12-27T20:26:38+08:00",
         "requester": {
           "reference": "Practitioner/clinical-doc-001",
@@ -4206,7 +4206,7 @@
           "reference": "Patient/patient-1006",
           "display": "王小明"
         },
-        "occurrenceDateTime": "2026-01-03T09:00:00+08:00",
+        "occurrenceDateTime": "2026-03-22T09:00:00+08:00",
         "authoredOn": "2025-12-27T20:26:38+08:00",
         "requester": {
           "reference": "Practitioner/clinical-doc-001",

@@ -64,7 +64,7 @@ export function AppShell() {
   useEffect(() => {
     const loadConfig = async () => {
       try {
-        const config = await fetch('/api/config').then(r => r.json())
+        const config = await fetch('/fhir/api/config').then(r => r.json())
         setActualIsDemo(config.isDemo)
       } catch {
         setActualIsDemo(isDemo)
