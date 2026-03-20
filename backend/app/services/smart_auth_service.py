@@ -177,18 +177,28 @@ class SMARTAuthService:
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": self.settings.smart_redirect_uri,
-            "client_id": self.settings.smart_client_id,
         }
         
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        auth = None
+        
         if self.settings.smart_client_secret:
-            data["client_secret"] = self.settings.smart_client_secret
+            # Confidential client: 使用 HTTP Basic Authentication (RFC 6749 Section 2.3.1)
+            auth = httpx.BasicAuth(
+                username=self.settings.smart_client_id,
+                password=self.settings.smart_client_secret,
+            )
+        else:
+            # Public client: client_id 放在 POST body
+            data["client_id"] = self.settings.smart_client_id
         
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     token_endpoint,
                     data=data,
-                    headers={"Content-Type": "application/x-www-form-urlencoded"}
+                    headers=headers,
+                    auth=auth,
                 )
                 
                 if response.status_code == 200:
