@@ -30,8 +30,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: nm-backend-thas
+    # 只綁本機：由主機上的原生 nginx 轉送（2026-10-25 nginx 移轉）
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       # 應用程式模式: demo 或 production
       # Demo Mode: 允許角色切換、快速登入
@@ -85,8 +86,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: nm-frontend-thas
+    # 只綁本機：由主機上的原生 nginx 轉送（2026-10-25 nginx 移轉）
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     depends_on:
       backend:
         condition: service_healthy
